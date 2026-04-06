@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { PROGRAM, DayType } from "@/lib/program";
 
 interface Session {
@@ -8,7 +9,6 @@ interface Session {
   date: string;
   day_type: DayType;
   completed: boolean;
-  created_at: string;
 }
 
 interface LogEntry {
@@ -18,16 +18,16 @@ interface LogEntry {
   weight_kg: number;
 }
 
-const COLOR = {
-  push: { bg: "bg-orange-500", badge: "bg-orange-100 text-orange-700" },
-  pull: { bg: "bg-blue-500", badge: "bg-blue-100 text-blue-700" },
-  legs: { bg: "bg-green-500", badge: "bg-green-100 text-green-700" },
+const ACCENT: Record<DayType, { text: string; bg: string; border: string }> = {
+  push: { text: "text-orange-400", bg: "bg-orange-950", border: "border-orange-900" },
+  pull: { text: "text-blue-400", bg: "bg-blue-950", border: "border-blue-900" },
+  legs: { text: "text-green-400", bg: "bg-green-950", border: "border-green-900" },
 };
 
 function SessionCard({ session }: { session: Session }) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [open, setOpen] = useState(false);
-  const c = COLOR[session.day_type];
+  const a = ACCENT[session.day_type];
 
   async function fetchLogs() {
     if (logs.length > 0) return;
@@ -40,56 +40,58 @@ function SessionCard({ session }: { session: Session }) {
     setOpen((o) => !o);
   }
 
-  // Group logs by exercise
   const byExercise: Record<string, LogEntry[]> = {};
   for (const log of logs) {
     if (!byExercise[log.exercise_name]) byExercise[log.exercise_name] = [];
     byExercise[log.exercise_name].push(log);
   }
 
-  const totalSets = PROGRAM[session.day_type].exercises.reduce((a, e) => a + e.sets, 0);
+  const totalSets = PROGRAM[session.day_type].exercises.reduce((acc, e) => acc + e.sets, 0);
   const loggedSets = logs.length;
 
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+    <div className="border border-[#1f1f1f] rounded-xl overflow-hidden bg-[#141414]">
       <button
         onClick={toggle}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-[#1a1a1a] transition-colors"
       >
         <div className="flex items-center gap-3">
-          <span className={`text-xs font-black px-2 py-0.5 rounded-full ${c.badge}`}>
+          <span
+            className={`text-xs font-black px-2.5 py-0.5 rounded-full ${a.bg} ${a.text} border ${a.border}`}
+          >
             {PROGRAM[session.day_type].label}
           </span>
           <div className="text-left">
-            <p className="font-semibold text-gray-800 text-sm">
+            <p className="font-bold text-white text-sm">
               {new Date(session.date).toLocaleDateString("en-US", {
                 weekday: "short",
                 month: "short",
                 day: "numeric",
               })}
             </p>
-            {loggedSets > 0 && (
-              <p className="text-xs text-gray-400">{loggedSets} / {totalSets} sets logged</p>
+            {open && loggedSets > 0 && (
+              <p className="text-xs text-[#555]">{loggedSets} / {totalSets} sets logged</p>
             )}
           </div>
         </div>
-        <span className="text-gray-400 text-xs">{open ? "▲" : "▼"}</span>
+        <span className="text-[#444] text-xs">{open ? "▲" : "▼"}</span>
       </button>
+
       {open && (
-        <div className="px-4 pb-4 border-t border-gray-100">
+        <div className="px-4 pb-4 border-t border-[#1f1f1f]">
           {Object.keys(byExercise).length === 0 ? (
-            <p className="text-sm text-gray-400 pt-3">No sets logged.</p>
+            <p className="text-sm text-[#555] pt-3">No sets logged.</p>
           ) : (
             Object.entries(byExercise).map(([name, sets]) => (
               <div key={name} className="mt-3">
-                <p className="text-xs font-bold text-gray-600 mb-1">{name}</p>
-                <div className="flex flex-wrap gap-1">
+                <p className="text-xs font-bold text-[#666] mb-1.5 uppercase tracking-wider">{name}</p>
+                <div className="flex flex-wrap gap-1.5">
                   {sets
                     .sort((a, b) => a.set_number - b.set_number)
                     .map((s) => (
                       <span
                         key={s.set_number}
-                        className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full"
+                        className="text-xs bg-[#1a1a1a] border border-[#2a2a2a] text-[#888] px-2.5 py-1 rounded-lg font-mono"
                       >
                         {s.reps}×{s.weight_kg}kg
                       </span>
@@ -110,66 +112,81 @@ export default function HistoryPage() {
 
   useEffect(() => {
     async function load() {
-      const res = await fetch("/api/sessions");
-      const data = await res.json();
-      setSessions(data.filter((s: Session) => s.completed));
-      setLoading(false);
+      try {
+        const res = await fetch("/api/sessions");
+        const data = await res.json();
+        setSessions(Array.isArray(data) ? data.filter((s: Session) => s.completed) : []);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, []);
 
-  // Stats
   const totalWorkouts = sessions.length;
-  const byType = { push: 0, pull: 0, legs: 0 };
+  const byType: Record<DayType, number> = { push: 0, pull: 0, legs: 0 };
   for (const s of sessions) byType[s.day_type]++;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-400 font-medium">Loading...</p>
+      <div className="min-h-screen bg-[#0d0d0d] flex items-center justify-center">
+        <p className="text-[#444] font-bold tracking-widest text-sm uppercase">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0d0d0d]">
       {/* Header */}
-      <div className="bg-gray-900 text-white px-4 pt-12 pb-6">
+      <div className="px-4 pt-14 pb-6 border-b border-[#1a1a1a]">
         <div className="max-w-md mx-auto">
-          <div className="flex items-center justify-between mb-1">
-            <a href="/" className="text-white/70 text-sm hover:text-white transition-colors">
-              ← Today
-            </a>
-          </div>
-          <h1 className="text-3xl font-black tracking-tight">HISTORY</h1>
-          <p className="text-white/70 text-sm mt-1">{totalWorkouts} workouts completed</p>
+          <Link
+            href="/"
+            className="text-[#555] text-xs font-semibold uppercase tracking-widest hover:text-white transition-colors mb-4 inline-block"
+          >
+            ← Today
+          </Link>
+          <h1 className="text-5xl font-black tracking-tighter uppercase text-white">
+            History
+          </h1>
+          <p className="text-[#444] text-sm font-bold mt-1">
+            {totalWorkouts} workout{totalWorkouts !== 1 ? "s" : ""} completed
+          </p>
         </div>
       </div>
 
       <div className="max-w-md mx-auto px-4 py-6">
-        {/* Stats row */}
+        {/* Stats */}
         {totalWorkouts > 0 && (
           <div className="grid grid-cols-3 gap-3 mb-6">
             {(["push", "pull", "legs"] as DayType[]).map((d) => (
-              <div key={d} className="bg-white border border-gray-200 rounded-xl p-3 text-center">
-                <p className={`text-2xl font-black ${COLOR[d].badge.split(" ")[1]}`}>{byType[d]}</p>
-                <p className="text-xs text-gray-500 font-semibold mt-0.5">{PROGRAM[d].label}</p>
+              <div
+                key={d}
+                className="bg-[#141414] border border-[#1f1f1f] rounded-xl p-4 text-center"
+              >
+                <p className={`text-3xl font-black ${ACCENT[d].text}`}>{byType[d]}</p>
+                <p className="text-xs text-[#555] font-bold mt-1 uppercase tracking-wider">
+                  {PROGRAM[d].label}
+                </p>
               </div>
             ))}
           </div>
         )}
 
         {sessions.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-4xl mb-3">💪</p>
-            <p className="text-gray-500 font-medium">No workouts yet.</p>
-            <p className="text-gray-400 text-sm mt-1">Complete your first session!</p>
-            <a href="/" className="inline-block mt-4 bg-gray-900 text-white font-bold px-6 py-3 rounded-2xl text-sm">
+          <div className="text-center py-20">
+            <p className="text-5xl mb-4">💪</p>
+            <p className="text-white font-black text-xl uppercase tracking-tight">No workouts yet</p>
+            <p className="text-[#555] text-sm mt-2 mb-6">Get to work.</p>
+            <Link
+              href="/"
+              className="inline-block bg-white text-black font-black px-8 py-3.5 rounded-2xl uppercase tracking-wider text-sm hover:bg-[#ddd] transition-colors"
+            >
               Start Now
-            </a>
+            </Link>
           </div>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-2.5">
             {sessions.map((s) => (
               <SessionCard key={s.id} session={s} />
             ))}
