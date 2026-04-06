@@ -180,17 +180,22 @@ export default function HomePage() {
 
   useEffect(() => {
     async function init() {
-      await fetch("/api/init", { method: "POST" });
-      setInited(true);
-      const data = await fetchSessions();
-      const today = new Date().toISOString().split("T")[0];
-      const todaySession = data.find((s: Session) => s.date === today && !s.completed);
-      if (todaySession) {
-        setActiveSession(todaySession);
-        const logsRes = await fetch(`/api/sessions/${todaySession.id}`);
-        setLogs(await logsRes.json());
+      try {
+        await fetch("/api/init", { method: "POST" });
+        setInited(true);
+        const data = await fetchSessions();
+        const today = new Date().toISOString().split("T")[0];
+        const todaySession = data.find((s: Session) => s.date === today && !s.completed);
+        if (todaySession) {
+          setActiveSession(todaySession);
+          const logsRes = await fetch(`/api/sessions/${todaySession.id}`);
+          setLogs(await logsRes.json());
+        }
+      } catch (e) {
+        console.error("Init error:", e);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     init();
   }, [fetchSessions]);
