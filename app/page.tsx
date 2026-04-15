@@ -39,8 +39,20 @@ function fmtDuration(s: number) {
 
 function calcVolume(logs: LogEntry[]) {
   return logs
-    .filter((l) => l.set_number > 0) // exclude warmup from volume
+    .filter((l) => l.set_number > 0 && Number(l.reps) > 0) // exclude warmup + failed sets
     .reduce((acc, l) => acc + Number(l.reps) * Number(l.weight_kg), 0);
+}
+
+// Parse default weight from program string: "7-13kg" → 7, "25kg band" → 25, "Band on wall" → 0
+function parseWeight(w: string): number {
+  const m = w.match(/(\d+)/);
+  return m ? parseInt(m[1]) : 0;
+}
+
+// Parse default reps from program string: "10-12" → 10, "12" → 12, "10 each" → 10
+function parseReps(r: string): number {
+  const m = r.match(/(\d+)/);
+  return m ? parseInt(m[1]) : 10;
 }
 
 function computeStreak(sessions: Session[]) {
@@ -74,10 +86,11 @@ function coachLine(sessions: Session[], dayType: DayType | null, streak: number)
   return `${diff} days off — don't lose momentum.`;
 }
 
-// ─── Set Row (Hevy-style) ─────────────────────────────────────────────────────
+// ─── Set Row (one-tap flow) ────────────────────────────────────────────────────
 function SetRow({
   isWarmup, setNum, sessionId, exerciseName,
-  saved, prevLog, onSaved, onUnsaved, onRestStart,
+  saved, prevLog, defaultWeight, defaultReps,
+  onSaved, onUnsaved, onRestStart,
 }: {
   isWarmup: boolean;
   setNum: number;
@@ -85,34 +98,27 @@ function SetRow({
   exerciseName: string;
   saved: LogEntry | undefined;
   prevLog: LogEntry | undefined;
+  defaultWeight: number;
+  defaultReps: number;
   onSaved: (entry: LogEntry) => void;
   onUnsaved: (setNum: number) => void;
   onRestStart: () => void;
 }) {
-  const [kg, setKg] = useState(saved?.weight_kg?.toString() ?? "");
-  const [reps, setReps] = useState(saved?.reps?.toString() ?? "");
+  const [editReps, setEditReps] = useState(String(defaultReps));
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const isDone = !!saved;
 
-  const isPR = isDone && prevLog &&
-    Number(kg || 0) > Number(prevLog.weight_kg);
+  const isDone = !!saved && Number(saved.reps) > 0;
+  const isFailed = !!saved && Number(saved.reps) === 0;
+  const label = isWarmup ? "W" : String(setNum);
 
-  async function check() {
-    if (isDone) {
-      // Uncheck: delete this log entry
-      setBusy(true);
-      await fetch("/api/logs", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, exercise_name: exerciseName, set_number: setNum }),
-      });
-      setBusy(false);
-      onUnsaved(setNum);
-      return;
-    }
-    if (!kg || !reps) return;
+  const prevLabel = prevLog && Number(prevLog.reps) > 0
+    ? `${prevLog.reps}×${prevLog.weight_kg}kg`
+    : "—";
+
+  async function saveEntry(reps: number) {
     setBusy(true);
-    const entry: LogEntry = { exercise_name: exerciseName, set_number: setNum, reps: Number(reps), weight_kg: Number(kg) };
+    const entry: LogEntry = { exercise_name: exerciseName, set_number: setNum, reps, weight_kg: defaultWeight };
     await fetch("/api/logs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -120,71 +126,141 @@ function SetRow({
     });
     setBusy(false);
     onSaved(entry);
-    if (!isWarmup) onRestStart();
+    if (!isWarmup && reps > 0) onRestStart();
   }
 
-  const prevLabel = prevLog ? `${prevLog.weight_kg}kg × ${prevLog.reps}` : "—";
+  async function undoEntry() {
+    setBusy(true);
+    await fetch("/api/logs", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, exercise_name: exerciseName, set_number: setNum }),
+    });
+    setBusy(false);
+    setEditing(false);
+    setEditReps(String(defaultReps));
+    onUnsaved(setNum);
+  }
 
-  return (
-    <div className={`grid gap-1 px-3 py-2 transition-all rounded-lg ${
-      isDone ? "bg-[#0e1f0e]" : isWarmup ? "bg-[#111]" : "bg-[#0f0f0f]"
-    }`} style={{ gridTemplateColumns: "28px 1fr 56px 56px 32px" }}>
-      {/* SET label */}
-      <div className="flex items-center justify-center">
-        <span className={`text-xs font-black ${isWarmup ? "text-yellow-500" : isDone ? "text-green-500" : "text-[#555]"}`}>
-          {isWarmup ? "W" : setNum}
+  async function confirmEdit() {
+    const reps = Math.max(1, parseInt(editReps) || 1);
+    setBusy(true);
+    const entry: LogEntry = { exercise_name: exerciseName, set_number: setNum, reps, weight_kg: defaultWeight };
+    await fetch("/api/logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, ...entry }),
+    });
+    setBusy(false);
+    setEditing(false);
+    onSaved(entry);
+  }
+
+  // ── Done ──
+  if (isDone && !editing) {
+    return (
+      <div
+        className="flex items-center gap-3 px-3 py-2.5 bg-[#081408] border-l-2 border-green-800 cursor-pointer active:opacity-70"
+        onClick={() => !busy && setEditing(true)}
+      >
+        <span className="text-xs font-black text-green-500 w-5 text-center shrink-0">{label}</span>
+        <span className="flex-1 text-xs font-mono text-green-400">
+          {saved!.reps} reps · {defaultWeight}kg
         </span>
-      </div>
-
-      {/* PREVIOUS */}
-      <div className="flex items-center">
-        <span className="text-[11px] text-[#444] font-mono">{prevLabel}</span>
-      </div>
-
-      {/* KG input */}
-      <input
-        type="number"
-        step="0.5"
-        value={kg}
-        onChange={(e) => setKg(e.target.value)}
-        placeholder={prevLog ? String(prevLog.weight_kg) : "kg"}
-        disabled={isDone}
-        className={`text-xs font-black text-center rounded-lg px-1 py-1.5 focus:outline-none transition-colors ${
-          isDone
-            ? "bg-transparent text-green-400 border border-green-900/30"
-            : "bg-[#1a1a1a] border border-[#2a2a2a] text-white focus:border-[#444]"
-        }`}
-      />
-
-      {/* REPS input */}
-      <input
-        type="number"
-        value={reps}
-        onChange={(e) => setReps(e.target.value)}
-        placeholder={prevLog ? String(prevLog.reps) : "reps"}
-        disabled={isDone}
-        className={`text-xs font-black text-center rounded-lg px-1 py-1.5 focus:outline-none transition-colors ${
-          isDone
-            ? "bg-transparent text-green-400 border border-green-900/30"
-            : "bg-[#1a1a1a] border border-[#2a2a2a] text-white focus:border-[#444]"
-        }`}
-      />
-
-      {/* Check button */}
-      <div className="flex items-center justify-center relative">
-        {isPR && (
-          <span className="absolute -top-3 right-0 text-[8px] font-black text-yellow-400">PR</span>
-        )}
         <button
-          onClick={check}
-          disabled={busy || (!isDone && (!kg || !reps))}
-          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
-            isDone
-              ? "bg-green-500 text-black"
-              : "bg-[#1a1a1a] border border-[#333] text-[#444] hover:border-[#555] disabled:opacity-30"
+          onClick={(e) => { e.stopPropagation(); undoEntry(); }}
+          disabled={busy}
+          className="text-[10px] font-black text-[#3a3a3a] hover:text-red-400 transition-colors px-1 py-0.5"
+        >
+          undo
+        </button>
+      </div>
+    );
+  }
+
+  // ── Edit mode ──
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 bg-[#0a180a]">
+        <span className="text-xs font-black text-green-500 w-5 text-center shrink-0">{label}</span>
+        <span className="text-[10px] text-[#555] font-mono shrink-0">{defaultWeight}kg</span>
+        <input
+          type="number"
+          value={editReps}
+          onChange={(e) => setEditReps(e.target.value)}
+          autoFocus
+          className="w-14 text-xs font-black text-center rounded-lg px-2 py-1.5 bg-[#1a1a1a] border border-[#3a3a3a] text-white focus:outline-none focus:border-green-700"
+        />
+        <span className="text-[10px] text-[#444] shrink-0">reps</span>
+        <div className="ml-auto flex gap-2">
+          <button
+            onClick={confirmEdit}
+            disabled={busy}
+            className="text-[11px] font-black text-green-400 hover:text-green-300 transition-colors px-2.5 py-1 bg-green-900/30 rounded-lg disabled:opacity-40"
+          >
+            {busy ? "…" : "save"}
+          </button>
+          <button
+            onClick={() => { setEditing(false); setEditReps(String(saved?.reps ?? defaultReps)); }}
+            className="text-[10px] font-black text-[#444] hover:text-white px-1"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Failed ──
+  if (isFailed) {
+    return (
+      <div className="flex items-center gap-3 px-3 py-2.5 bg-[#140808] border-l-2 border-red-900/50">
+        <span className="text-xs font-black text-red-500/60 w-5 text-center shrink-0">{label}</span>
+        <span className="flex-1 text-xs text-red-400/60 font-mono">too hard</span>
+        <button
+          onClick={undoEntry}
+          disabled={busy}
+          className="text-[10px] font-black text-[#3a3a3a] hover:text-red-400 transition-colors px-1 py-0.5"
+        >
+          undo
+        </button>
+      </div>
+    );
+  }
+
+  // ── Pending ──
+  return (
+    <div className={`flex items-center gap-2 px-3 py-2 ${isWarmup ? "bg-[#111]" : "bg-[#0f0f0f]"}`}>
+      <span className={`text-xs font-black w-5 text-center shrink-0 ${isWarmup ? "text-yellow-600/70" : "text-[#555]"}`}>
+        {label}
+      </span>
+      <span className="text-[10px] text-[#333] font-mono w-16 shrink-0">{prevLabel}</span>
+      <input
+        type="number"
+        value={editReps}
+        onChange={(e) => setEditReps(e.target.value)}
+        className="w-14 text-xs font-black text-center rounded-lg px-1 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] text-white focus:outline-none focus:border-[#444]"
+      />
+      <span className="text-[10px] text-[#444] shrink-0">reps</span>
+      <div className="ml-auto flex items-center gap-1.5">
+        <button
+          onClick={() => saveEntry(0)}
+          disabled={busy}
+          title="Too hard"
+          className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#180808] border border-red-900/30 text-red-500/50 hover:border-red-700 hover:text-red-400 transition-all text-xs font-black disabled:opacity-30"
+        >
+          ✗
+        </button>
+        <button
+          onClick={() => saveEntry(Math.max(1, parseInt(editReps) || 1))}
+          disabled={busy}
+          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all text-xs font-black disabled:opacity-30 ${
+            isWarmup
+              ? "bg-yellow-900/20 border border-yellow-900/40 text-yellow-600/70 hover:border-yellow-600 hover:text-yellow-400"
+              : "bg-[#1a1a1a] border border-[#333] text-[#555] hover:border-[#555] hover:text-white"
           }`}
         >
-          <span className="text-xs font-black">{busy ? "…" : "✓"}</span>
+          {busy ? "…" : "✓"}
         </button>
       </div>
     </div>
@@ -206,11 +282,17 @@ function ExerciseTable({
   onRestStart: () => void;
   accentColor: string;
 }) {
+  const defaultWeight = parseWeight(exercise.weight);
+  const defaultReps = parseReps(exercise.reps);
+
   const logsForEx = (sn: number) => logs.find((l) => l.exercise_name === exercise.name && l.set_number === sn);
   const prevForEx = (sn: number) => prevLogs.find((l) => l.exercise_name === exercise.name && l.set_number === sn);
 
   const totalSets = exercise.sets + extraSets;
-  const doneSets = Array.from({ length: totalSets }, (_, i) => i + 1).filter((s) => logsForEx(s)).length;
+  const doneSets = Array.from({ length: totalSets }, (_, i) => i + 1).filter((s) => {
+    const log = logsForEx(s);
+    return log && Number(log.reps) > 0; // only count completed (not failed) sets
+  }).length;
   const warmupDone = !!logsForEx(0);
   const allDone = warmupDone && doneSets === totalSets;
 
@@ -249,12 +331,10 @@ function ExerciseTable({
       </div>
 
       {/* Table header */}
-      <div className="grid px-3 py-1 bg-[#0a0a0a]" style={{ gridTemplateColumns: "28px 1fr 56px 56px 32px", gap: "4px" }}>
-        {["SET", "PREVIOUS", "KG", "REPS", ""].map((h, i) => (
-          <span key={i} className="text-[9px] font-black text-[#333] uppercase tracking-widest text-center">
-            {h}
-          </span>
-        ))}
+      <div className="flex items-center px-3 py-1 bg-[#0a0a0a] gap-2">
+        <span className="text-[9px] font-black text-[#333] uppercase tracking-widest w-5 text-center shrink-0">SET</span>
+        <span className="text-[9px] font-black text-[#333] uppercase tracking-widest w-16 shrink-0">PREV</span>
+        <span className="text-[9px] font-black text-[#333] uppercase tracking-widest w-14 text-center shrink-0">REPS</span>
       </div>
 
       {/* Warmup row */}
@@ -262,6 +342,7 @@ function ExerciseTable({
         isWarmup key={`w-${exercise.name}`}
         setNum={0} sessionId={sessionId} exerciseName={exercise.name}
         saved={logsForEx(0)} prevLog={prevForEx(0)}
+        defaultWeight={defaultWeight} defaultReps={defaultReps}
         onSaved={handleSaved} onUnsaved={handleUnsaved}
         onRestStart={() => {}} // warmup doesn't trigger rest
       />
@@ -272,6 +353,7 @@ function ExerciseTable({
           key={`${exercise.name}-${s}`} isWarmup={false}
           setNum={s} sessionId={sessionId} exerciseName={exercise.name}
           saved={logsForEx(s)} prevLog={prevForEx(s)}
+          defaultWeight={defaultWeight} defaultReps={defaultReps}
           onSaved={handleSaved} onUnsaved={handleUnsaved}
           onRestStart={onRestStart}
         />
