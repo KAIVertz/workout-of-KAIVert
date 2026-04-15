@@ -1,46 +1,51 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { PROGRAM, DayType, DAY_CYCLE, getNextDayType, Exercise } from "@/lib/program";
+import { useEffect, useState, useCallback, useRef } from "react";
+import Link from "next/link";
+import {
+  PROGRAM, DayType, ACCENT, WEEKLY_SCHEDULE, DAY_NAMES,
+  getTodayDayType, Exercise,
+} from "@/lib/program";
 import { BottomNav } from "@/components/BottomNav";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface Session {
   id: number;
   date: string;
   day_type: DayType;
   completed: boolean;
+  created_at: string;
+  duration_seconds?: number;
 }
 
 interface LogEntry {
   exercise_name: string;
-  set_number: number;
+  set_number: number; // 0 = warmup
   reps: number | string;
   weight_kg: number | string;
 }
 
-const ACCENT: Record<DayType, { color: string; glow: string; text: string; border: string }> = {
-  push: { color: "#f97316", glow: "shadow-[0_0_32px_rgba(249,115,22,0.35)]", text: "text-orange-400", border: "border-orange-500" },
-  pull: { color: "#3b82f6", glow: "shadow-[0_0_32px_rgba(59,130,246,0.35)]", text: "text-blue-400", border: "border-blue-500" },
-  legs: { color: "#22c55e", glow: "shadow-[0_0_32px_rgba(34,197,94,0.35)]", text: "text-green-400", border: "border-green-500" },
-};
-
-function coachLine(sessions: Session[], dayType: DayType, streak: number): string {
-  const today = new Date();
-  if (today.getDay() === 0) return "Sunday. Rest day. Recover.";
-  const last = sessions.find((s) => s.completed);
-  if (!last) return "First session. Let's build.";
-  const diff = Math.floor((Date.now() - new Date(last.date).getTime()) / 86400000);
-  if (diff === 0) return "Session locked in. See you tomorrow.";
-  if (streak >= 5) return `${streak}-day streak. You're dialed in.`;
-  if (streak >= 3) return `${streak} days straight. Keep the fire.`;
-  if (diff === 1) return "24h recovery done. Body's primed.";
-  if (diff === 2) return "2 days off. Muscles rebuilt. Hit it.";
-  return `${diff} days off — time to get back.`;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function fmt(s: number) {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
-function computeCurrentStreak(sessions: Session[]): number {
+function fmtDuration(s: number) {
+  const m = Math.floor(s / 60);
+  return m < 60 ? `${m}min` : `${Math.floor(m / 60)}h ${m % 60}min`;
+}
+
+function calcVolume(logs: LogEntry[]) {
+  return logs
+    .filter((l) => l.set_number > 0) // exclude warmup from volume
+    .reduce((acc, l) => acc + Number(l.reps) * Number(l.weight_kg), 0);
+}
+
+function computeStreak(sessions: Session[]) {
   const dates = new Set(sessions.filter((s) => s.completed).map((s) => s.date));
-  if (dates.size === 0) return 0;
+  if (!dates.size) return 0;
   const today = new Date();
   today.setHours(12, 0, 0, 0);
   const todayStr = today.toISOString().split("T")[0];
@@ -56,178 +61,272 @@ function computeCurrentStreak(sessions: Session[]): number {
   return streak;
 }
 
+function coachLine(sessions: Session[], dayType: DayType | null, streak: number) {
+  if (!dayType) return "Sunday. No weights. Sleep, eat, grow.";
+  const last = sessions.find((s) => s.completed);
+  if (!last) return "Day one. Let's build.";
+  const diff = Math.floor((Date.now() - new Date(last.date).getTime()) / 86400000);
+  if (diff === 0) return "Session locked in. Protein up. Recover.";
+  if (streak >= 5) return `${streak}-day streak. You're in the zone.`;
+  if (streak >= 3) return `${streak} days straight. Keep it going.`;
+  if (diff === 1) return "24h rest done. Body is primed. Let's go.";
+  if (diff === 2) return "2 days off. Muscles rebuilt. Hit it.";
+  return `${diff} days off — don't lose momentum.`;
+}
+
+// ─── Set Row (Hevy-style) ─────────────────────────────────────────────────────
 function SetRow({
-  sessionId, exercise, setNum, saved, prevLog, onSave,
+  isWarmup, setNum, sessionId, exerciseName,
+  saved, prevLog, onSaved, onUnsaved, onRestStart,
 }: {
-  sessionId: number;
-  exercise: Exercise;
+  isWarmup: boolean;
   setNum: number;
+  sessionId: number;
+  exerciseName: string;
   saved: LogEntry | undefined;
   prevLog: LogEntry | undefined;
-  onSave: (entry: LogEntry) => void;
+  onSaved: (entry: LogEntry) => void;
+  onUnsaved: (setNum: number) => void;
+  onRestStart: () => void;
 }) {
+  const [kg, setKg] = useState(saved?.weight_kg?.toString() ?? "");
   const [reps, setReps] = useState(saved?.reps?.toString() ?? "");
-  const [weight, setWeight] = useState(saved?.weight_kg?.toString() ?? "");
-  const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState(!!saved);
+  const [busy, setBusy] = useState(false);
+  const isDone = !!saved;
 
-  const isPR = done && prevLog &&
-    Number(weight) > Number(prevLog.weight_kg);
+  const isPR = isDone && prevLog &&
+    Number(kg || 0) > Number(prevLog.weight_kg);
 
-  async function save() {
-    if (!reps || !weight) return;
-    setSaving(true);
-    const entry: LogEntry = { exercise_name: exercise.name, set_number: setNum, reps: Number(reps), weight_kg: Number(weight) };
+  async function check() {
+    if (isDone) {
+      // Uncheck: delete this log entry
+      setBusy(true);
+      await fetch("/api/logs", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, exercise_name: exerciseName, set_number: setNum }),
+      });
+      setBusy(false);
+      onUnsaved(setNum);
+      return;
+    }
+    if (!kg || !reps) return;
+    setBusy(true);
+    const entry: LogEntry = { exercise_name: exerciseName, set_number: setNum, reps: Number(reps), weight_kg: Number(kg) };
     await fetch("/api/logs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId, ...entry }),
     });
-    setSaving(false);
-    setDone(true);
-    onSave(entry);
+    setBusy(false);
+    onSaved(entry);
+    if (!isWarmup) onRestStart();
   }
 
+  const prevLabel = prevLog ? `${prevLog.weight_kg}kg × ${prevLog.reps}` : "—";
+
   return (
-    <div className={`flex items-center gap-3 py-2 px-3 rounded-xl transition-all border ${
-      done ? "bg-[#0f1f0f] border-green-900/50" : "bg-[#1a1a1a] border-[#222]"
-    }`}>
-      <div className="flex flex-col items-center w-6 shrink-0">
-        <span className="text-[10px] font-black text-[#444]">S{setNum}</span>
-        {prevLog && (
-          <span className="text-[8px] text-[#333] font-mono leading-tight">
-            {prevLog.reps}×{prevLog.weight_kg}
-          </span>
-        )}
+    <div className={`grid gap-1 px-3 py-2 transition-all rounded-lg ${
+      isDone ? "bg-[#0e1f0e]" : isWarmup ? "bg-[#111]" : "bg-[#0f0f0f]"
+    }`} style={{ gridTemplateColumns: "28px 1fr 56px 56px 32px" }}>
+      {/* SET label */}
+      <div className="flex items-center justify-center">
+        <span className={`text-xs font-black ${isWarmup ? "text-yellow-500" : isDone ? "text-green-500" : "text-[#555]"}`}>
+          {isWarmup ? "W" : setNum}
+        </span>
       </div>
 
-      <div className="flex items-center gap-2 flex-1">
-        <input
-          type="number"
-          placeholder={prevLog ? String(prevLog.reps) : "—"}
-          value={reps}
-          onChange={(e) => { setReps(e.target.value); setDone(false); }}
-          onKeyDown={(e) => e.key === "Enter" && save()}
-          className="w-14 bg-[#111] border border-[#2a2a2a] text-white text-sm font-bold rounded-lg px-2 py-1.5 text-center focus:outline-none focus:border-[#444] transition-colors"
-        />
-        <span className="text-[#333] text-xs font-bold">×</span>
-        <input
-          type="number"
-          placeholder={prevLog ? String(prevLog.weight_kg) : "—"}
-          step="0.5"
-          value={weight}
-          onChange={(e) => { setWeight(e.target.value); setDone(false); }}
-          onKeyDown={(e) => e.key === "Enter" && save()}
-          className="w-14 bg-[#111] border border-[#2a2a2a] text-white text-sm font-bold rounded-lg px-2 py-1.5 text-center focus:outline-none focus:border-[#444] transition-colors"
-        />
-        <span className="text-[#444] text-xs font-bold">kg</span>
+      {/* PREVIOUS */}
+      <div className="flex items-center">
+        <span className="text-[11px] text-[#444] font-mono">{prevLabel}</span>
       </div>
 
-      {isPR && <span className="text-[9px] font-black text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded-md">PR</span>}
-
-      <button
-        onClick={save}
-        disabled={saving || !reps || !weight}
-        className={`text-xs font-black px-3 py-1.5 rounded-lg transition-all shrink-0 ${
-          done ? "bg-green-900/60 text-green-400" : "bg-[#222] text-[#666] hover:bg-[#2a2a2a] hover:text-white disabled:opacity-30"
+      {/* KG input */}
+      <input
+        type="number"
+        step="0.5"
+        value={kg}
+        onChange={(e) => setKg(e.target.value)}
+        placeholder={prevLog ? String(prevLog.weight_kg) : "kg"}
+        disabled={isDone}
+        className={`text-xs font-black text-center rounded-lg px-1 py-1.5 focus:outline-none transition-colors ${
+          isDone
+            ? "bg-transparent text-green-400 border border-green-900/30"
+            : "bg-[#1a1a1a] border border-[#2a2a2a] text-white focus:border-[#444]"
         }`}
-      >
-        {saving ? "…" : done ? "✓" : "LOG"}
-      </button>
+      />
+
+      {/* REPS input */}
+      <input
+        type="number"
+        value={reps}
+        onChange={(e) => setReps(e.target.value)}
+        placeholder={prevLog ? String(prevLog.reps) : "reps"}
+        disabled={isDone}
+        className={`text-xs font-black text-center rounded-lg px-1 py-1.5 focus:outline-none transition-colors ${
+          isDone
+            ? "bg-transparent text-green-400 border border-green-900/30"
+            : "bg-[#1a1a1a] border border-[#2a2a2a] text-white focus:border-[#444]"
+        }`}
+      />
+
+      {/* Check button */}
+      <div className="flex items-center justify-center relative">
+        {isPR && (
+          <span className="absolute -top-3 right-0 text-[8px] font-black text-yellow-400">PR</span>
+        )}
+        <button
+          onClick={check}
+          disabled={busy || (!isDone && (!kg || !reps))}
+          className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+            isDone
+              ? "bg-green-500 text-black"
+              : "bg-[#1a1a1a] border border-[#333] text-[#444] hover:border-[#555] disabled:opacity-30"
+          }`}
+        >
+          <span className="text-xs font-black">{busy ? "…" : "✓"}</span>
+        </button>
+      </div>
     </div>
   );
 }
 
-function ExerciseCard({
-  sessionId, exercise, logs, prevLogs, onLogsUpdate, autoOpen,
+// ─── Exercise Table ────────────────────────────────────────────────────────────
+function ExerciseTable({
+  exercise, sessionId, logs, prevLogs, extraSets,
+  onLogsUpdate, onAddSet, onRestStart, accentColor,
 }: {
-  sessionId: number;
   exercise: Exercise;
+  sessionId: number;
   logs: LogEntry[];
   prevLogs: LogEntry[];
+  extraSets: number;
   onLogsUpdate: (updated: LogEntry[]) => void;
-  autoOpen: boolean;
+  onAddSet: () => void;
+  onRestStart: () => void;
+  accentColor: string;
 }) {
-  const [open, setOpen] = useState(autoOpen);
+  const logsForEx = (sn: number) => logs.find((l) => l.exercise_name === exercise.name && l.set_number === sn);
+  const prevForEx = (sn: number) => prevLogs.find((l) => l.exercise_name === exercise.name && l.set_number === sn);
 
-  const saved = (s: number) => logs.find((l) => l.exercise_name === exercise.name && l.set_number === s);
-  const prev = (s: number) => prevLogs.find((l) => l.exercise_name === exercise.name && l.set_number === s);
-  const doneCount = Array.from({ length: exercise.sets }, (_, i) => i + 1).filter((s) => saved(s)).length;
-  const allDone = doneCount === exercise.sets;
+  const totalSets = exercise.sets + extraSets;
+  const doneSets = Array.from({ length: totalSets }, (_, i) => i + 1).filter((s) => logsForEx(s)).length;
+  const warmupDone = !!logsForEx(0);
+  const allDone = warmupDone && doneSets === totalSets;
 
-  const prevMaxWeight = prevLogs
-    .filter((l) => l.exercise_name === exercise.name)
-    .reduce((max, l) => Math.max(max, Number(l.weight_kg)), 0);
-
-  function handleSave(entry: LogEntry) {
+  function handleSaved(entry: LogEntry) {
     onLogsUpdate([
       ...logs.filter((l) => !(l.exercise_name === entry.exercise_name && l.set_number === entry.set_number)),
       entry,
     ]);
   }
 
-  return (
-    <div className={`rounded-xl overflow-hidden border transition-all ${allDone ? "border-green-900/40 bg-[#0f1a0f]" : "border-[#1f1f1f] bg-[#141414]"}`}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/[0.02] transition-colors"
-      >
-        <div className="text-left">
-          <div className="flex items-center gap-2">
-            {allDone && <span className="text-green-400 text-xs">✓</span>}
-            <p className={`font-bold text-sm ${allDone ? "text-[#555]" : "text-white"}`}>{exercise.name}</p>
-          </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            <p className="text-xs text-[#444]">{exercise.sets}×{exercise.reps} · {exercise.weight}</p>
-            {prevMaxWeight > 0 && !allDone && (
-              <>
-                <span className="text-[#2a2a2a]">·</span>
-                <p className="text-[10px] text-[#444] font-mono">prev {prevMaxWeight}kg</p>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-black px-2 py-0.5 rounded-full ${allDone ? "bg-green-900/40 text-green-400" : "bg-[#1a1a1a] text-[#555]"}`}>
-            {doneCount}/{exercise.sets}
-          </span>
-          <span className="text-[#333] text-xs">{open ? "▲" : "▼"}</span>
-        </div>
-      </button>
+  function handleUnsaved(setNum: number) {
+    onLogsUpdate(logs.filter((l) => !(l.exercise_name === exercise.name && l.set_number === setNum)));
+  }
 
-      {open && (
-        <div className="px-4 pb-4 border-t border-[#1a1a1a]">
-          <p className="text-xs text-[#444] italic mt-3 mb-3 leading-relaxed">{exercise.tip}</p>
-          <div className="flex flex-col gap-2">
-            {Array.from({ length: exercise.sets }, (_, i) => i + 1).map((s) => (
-              <SetRow
-                key={s}
-                sessionId={sessionId}
-                exercise={exercise}
-                setNum={s}
-                saved={saved(s)}
-                prevLog={prev(s)}
-                onSave={handleSave}
-              />
-            ))}
+  return (
+    <div className={`rounded-2xl overflow-hidden border transition-all ${
+      allDone ? "border-green-900/40" : "border-[#1f1f1f]"
+    } bg-[#111]`}>
+      {/* Exercise header */}
+      <div className="px-4 pt-3.5 pb-2">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="font-bold text-white text-sm leading-tight">{exercise.name}</p>
+            <p className="text-[10px] font-semibold mt-0.5" style={{ color: accentColor + "99" }}>
+              {exercise.muscle} · {exercise.sets} × {exercise.reps} · {exercise.weight}
+            </p>
           </div>
+          {allDone && (
+            <span className="text-[10px] font-black text-green-400 bg-green-900/30 px-2 py-0.5 rounded-full">DONE</span>
+          )}
+          {!allDone && (
+            <span className="text-[10px] font-mono text-[#444]">{doneSets}/{totalSets}</span>
+          )}
         </div>
-      )}
+        <p className="text-[10px] text-[#444] italic mt-1.5 leading-relaxed">{exercise.tip}</p>
+      </div>
+
+      {/* Table header */}
+      <div className="grid px-3 py-1 bg-[#0a0a0a]" style={{ gridTemplateColumns: "28px 1fr 56px 56px 32px", gap: "4px" }}>
+        {["SET", "PREVIOUS", "KG", "REPS", ""].map((h, i) => (
+          <span key={i} className="text-[9px] font-black text-[#333] uppercase tracking-widest text-center">
+            {h}
+          </span>
+        ))}
+      </div>
+
+      {/* Warmup row */}
+      <SetRow
+        isWarmup key={`w-${exercise.name}`}
+        setNum={0} sessionId={sessionId} exerciseName={exercise.name}
+        saved={logsForEx(0)} prevLog={prevForEx(0)}
+        onSaved={handleSaved} onUnsaved={handleUnsaved}
+        onRestStart={() => {}} // warmup doesn't trigger rest
+      />
+
+      {/* Working sets */}
+      {Array.from({ length: totalSets }, (_, i) => i + 1).map((s) => (
+        <SetRow
+          key={`${exercise.name}-${s}`} isWarmup={false}
+          setNum={s} sessionId={sessionId} exerciseName={exercise.name}
+          saved={logsForEx(s)} prevLog={prevForEx(s)}
+          onSaved={handleSaved} onUnsaved={handleUnsaved}
+          onRestStart={onRestStart}
+        />
+      ))}
+
+      {/* Add set */}
+      <button
+        onClick={onAddSet}
+        className="w-full py-2.5 text-[11px] font-black text-[#444] hover:text-white transition-colors border-t border-[#1a1a1a] tracking-widest uppercase"
+      >
+        + Add Set
+      </button>
     </div>
   );
 }
 
+// ─── Rest Timer Bar ────────────────────────────────────────────────────────────
+function RestTimerBar({ seconds, total, onSkip }: { seconds: number; total: number; onSkip: () => void }) {
+  const pct = (seconds / total) * 100;
+  return (
+    <div className="bg-[#141414] border border-[#222] rounded-2xl px-4 py-3 flex items-center gap-3">
+      <div className="flex-1">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-black text-[#555] uppercase tracking-widest">Rest</span>
+          <span className="text-sm font-black text-white font-mono">{fmt(seconds)}</span>
+        </div>
+        <div className="h-1 bg-[#222] rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-1000"
+            style={{ width: `${pct}%`, background: "#C8FF00" }}
+          />
+        </div>
+      </div>
+      <button
+        onClick={onSkip}
+        className="text-[10px] font-black text-[#555] hover:text-white transition-colors uppercase tracking-widest px-2 py-1"
+      >
+        Skip
+      </button>
+    </div>
+  );
+}
+
+// ─── Cancel Confirm ────────────────────────────────────────────────────────────
 function CancelConfirm({ onConfirm, onDismiss }: { onConfirm: () => void; onDismiss: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50 px-4 pb-10">
-      <div className="bg-[#161616] border border-[#2a2a2a] rounded-2xl p-6 w-full max-w-md">
+      <div className="bg-[#141414] border border-[#222] rounded-2xl p-6 w-full max-w-md">
         <p className="text-white font-black text-lg mb-1">Cancel workout?</p>
         <p className="text-[#555] text-sm mb-6">All logged sets will be deleted.</p>
         <div className="flex gap-3">
-          <button onClick={onDismiss} className="flex-1 bg-[#1f1f1f] border border-[#2a2a2a] text-white font-bold py-3.5 rounded-xl hover:bg-[#252525] transition-colors">
+          <button onClick={onDismiss} className="flex-1 bg-[#1f1f1f] border border-[#2a2a2a] text-white font-bold py-3.5 rounded-xl">
             Keep going
           </button>
-          <button onClick={onConfirm} className="flex-1 bg-red-950/60 border border-red-900/50 text-red-400 font-black py-3.5 rounded-xl hover:bg-red-900/40 transition-colors">
+          <button onClick={onConfirm} className="flex-1 bg-red-950/60 border border-red-900/50 text-red-400 font-black py-3.5 rounded-xl">
             Cancel it
           </button>
         </div>
@@ -236,6 +335,7 @@ function CancelConfirm({ onConfirm, onDismiss }: { onConfirm: () => void; onDism
   );
 }
 
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
@@ -244,6 +344,31 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [showCancel, setShowCancel] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [restActive, setRestActive] = useState(false);
+  const [restSeconds, setRestSeconds] = useState(30);
+  const [extraSets, setExtraSets] = useState<Record<string, number>>({});
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const restRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const todayDayType = getTodayDayType();
+
+  // ── Workout timer
+  useEffect(() => {
+    if (!activeSession) { setElapsed(0); return; }
+    const start = new Date(activeSession.created_at).getTime();
+    setElapsed(Math.floor((Date.now() - start) / 1000));
+    intervalRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [activeSession?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Rest countdown
+  useEffect(() => {
+    if (!restActive) return;
+    if (restSeconds <= 0) { setRestActive(false); setRestSeconds(30); return; }
+    restRef.current = setTimeout(() => setRestSeconds((s) => s - 1), 1000);
+    return () => { if (restRef.current) clearTimeout(restRef.current); };
+  }, [restActive, restSeconds]);
 
   const fetchSessions = useCallback(async () => {
     const res = await fetch("/api/sessions");
@@ -253,8 +378,7 @@ export default function HomePage() {
     return arr as Session[];
   }, []);
 
-  // Fetch previous session logs for the given day type
-  async function fetchPrevLogs(dayType: DayType, excludeId: number, allSessions: Session[]) {
+  async function loadPrevLogs(dayType: DayType, excludeId: number, allSessions: Session[]) {
     const prev = allSessions.find((s) => s.completed && s.day_type === dayType && s.id !== excludeId);
     if (!prev) return;
     const res = await fetch(`/api/sessions/${prev.id}`);
@@ -267,38 +391,37 @@ export default function HomePage() {
         await fetch("/api/init", { method: "POST" });
         const data = await fetchSessions();
         const today = new Date().toISOString().split("T")[0];
-        const todaySession = data.find((s: Session) => s.date === today && !s.completed);
-        if (todaySession) {
-          setActiveSession(todaySession);
-          const [logsRes] = await Promise.all([fetch(`/api/sessions/${todaySession.id}`)]);
+        const todaySess = data.find((s: Session) => s.date === today && !s.completed);
+        if (todaySess) {
+          setActiveSession(todaySess);
+          const logsRes = await fetch(`/api/sessions/${todaySess.id}`);
           setLogs(await logsRes.json());
-          await fetchPrevLogs(todaySession.day_type, todaySession.id, data);
+          await loadPrevLogs(todaySess.day_type, todaySess.id, data);
         }
       } catch (e) {
-        console.error("Init error:", e);
+        console.error(e);
       } finally {
         setLoading(false);
       }
     }
     init();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function startWorkout() {
+    if (!todayDayType) return;
     setStarting(true);
     try {
-      const lastCompleted = sessions.find((s) => s.completed);
-      const nextDay = getNextDayType(lastCompleted?.day_type as DayType | null);
       const res = await fetch("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ day_type: nextDay }),
+        body: JSON.stringify({ day_type: todayDayType }),
       });
       const session = await res.json();
       setActiveSession(session);
       setLogs([]);
+      setExtraSets({});
       const updated = await fetchSessions();
-      await fetchPrevLogs(session.day_type, session.id, updated);
+      await loadPrevLogs(session.day_type, session.id, updated);
     } finally {
       setStarting(false);
     }
@@ -309,12 +432,14 @@ export default function HomePage() {
     await fetch(`/api/sessions/${activeSession.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ completed: true }),
+      body: JSON.stringify({ completed: true, duration_seconds: elapsed }),
     });
     await fetchSessions();
     setActiveSession(null);
     setLogs([]);
     setPrevLogs([]);
+    setExtraSets({});
+    setRestActive(false);
   }
 
   async function cancelWorkout() {
@@ -324,164 +449,293 @@ export default function HomePage() {
     setActiveSession(null);
     setLogs([]);
     setPrevLogs([]);
+    setExtraSets({});
     setShowCancel(false);
+    setRestActive(false);
+  }
+
+  function triggerRest() {
+    setRestSeconds(30);
+    setRestActive(true);
   }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-[#0d0d0d] flex items-center justify-center">
-        <p className="text-[#444] font-bold tracking-widest text-sm uppercase animate-pulse">Loading...</p>
+        <p className="text-[#444] text-sm font-bold tracking-widest uppercase animate-pulse">Loading…</p>
       </div>
     );
   }
 
-  const lastCompleted = sessions.find((s) => s.completed);
-  const dayType = activeSession?.day_type ?? getNextDayType(lastCompleted?.day_type as DayType | null);
-  const currentProgram = PROGRAM[dayType];
+  // ── REST DAY (Sunday)
+  if (!todayDayType && !activeSession) {
+    const streak = computeStreak(sessions);
+    return (
+      <div className="min-h-screen bg-[#0d0d0d] flex flex-col pb-28">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <p className="text-6xl mb-4">😴</p>
+          <h1 className="text-4xl font-black uppercase tracking-tighter text-white">Rest Day</h1>
+          <p className="text-[#555] text-sm mt-2 mb-6">Sunday. No weights. Sleep, eat, grow.</p>
+          {streak > 0 && (
+            <div className="bg-[#141414] border border-[#222] rounded-2xl px-6 py-3 mb-4">
+              <p className="text-[#555] text-[10px] uppercase tracking-widest">Current Streak</p>
+              <p className="text-3xl font-black text-orange-400">🔥 {streak}</p>
+            </div>
+          )}
+          <div className="text-[#444] text-xs space-y-1 mt-2">
+            <p>· Eat enough protein (aim for 100g today)</p>
+            <p>· 8h sleep = muscle growth</p>
+            <p>· Light walk is fine — just no lifting</p>
+          </div>
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
+
+  const dayType = activeSession?.day_type ?? todayDayType!;
   const a = ACCENT[dayType];
-  const streak = computeCurrentStreak(sessions);
+  const exercises = PROGRAM[dayType];
+  const streak = computeStreak(sessions);
 
-  const totalSets = currentProgram.exercises.reduce((acc, e) => acc + e.sets, 0);
-  const doneSets = currentProgram.exercises.reduce((acc, e) =>
-    acc + Array.from({ length: e.sets }, (_, i) => i + 1).filter((s) =>
-      logs.find((l) => l.exercise_name === e.name && l.set_number === s)
-    ).length, 0);
-  const pct = totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
+  // Volume + sets stats
+  const volume = calcVolume(logs);
+  const totalWorkSets = exercises.reduce((acc, ex) => acc + ex.sets + (extraSets[ex.name] ?? 0), 0);
+  const doneWorkSets = exercises.reduce((acc, ex) => {
+    const total = ex.sets + (extraSets[ex.name] ?? 0);
+    return acc + Array.from({ length: total }, (_, i) => i + 1).filter(
+      (s) => logs.find((l) => l.exercise_name === ex.name && l.set_number === s)
+    ).length;
+  }, 0);
+  const pct = totalWorkSets > 0 ? Math.round((doneWorkSets / totalWorkSets) * 100) : 0;
 
-  const firstIncompleteIdx = activeSession
-    ? currentProgram.exercises.findIndex((ex) =>
-        Array.from({ length: ex.sets }, (_, i) => i + 1).filter((s) =>
-          logs.find((l) => l.exercise_name === ex.name && l.set_number === s)
-        ).length < ex.sets
-      )
-    : -1;
+  // This-week strip
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const todayStr = today.toISOString().split("T")[0];
+  const completedDates = new Map(sessions.filter((s) => s.completed).map((s) => [s.date, s.day_type]));
+
+  // Week Mon–Sat
+  const dow = today.getDay();
+  const diffToMon = dow === 0 ? -6 : 1 - dow;
+  const weekDays = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + diffToMon + i);
+    return d;
+  });
+
+  const lastCompleted = sessions.find((s) => s.completed);
 
   return (
     <div className="min-h-screen bg-[#0d0d0d]">
       {showCancel && <CancelConfirm onConfirm={cancelWorkout} onDismiss={() => setShowCancel(false)} />}
 
-      {/* Top accent line */}
-      <div className="h-0.5 w-full" style={{ background: a.color }} />
+      {/* Accent stripe */}
+      <div className="h-0.5" style={{ background: a.color }} />
 
-      {/* Header */}
-      <div className="px-4 pt-10 pb-4">
-        <div className="max-w-md mx-auto">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[#444] text-[10px] font-bold uppercase tracking-widest mb-1">
-                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
-              </p>
-              <h1 className="text-5xl font-black tracking-tighter uppercase leading-none" style={{ color: a.color }}>
-                {currentProgram.label}
-              </h1>
-              <p className="text-[#333] text-xs font-bold uppercase tracking-wider mt-1">Day</p>
-            </div>
-
-            <div className="flex flex-col items-end gap-1 pt-1">
-              {/* Streak pill */}
-              {streak > 0 && (
-                <div className="flex items-center gap-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-full px-2.5 py-1">
-                  <span className="text-[10px]">🔥</span>
-                  <span className="text-white text-xs font-black">{streak}</span>
-                  <span className="text-[#555] text-[9px] font-bold uppercase">streak</span>
-                </div>
-              )}
-              {/* Cycle dots */}
-              <div className="flex gap-1 mt-1">
-                {DAY_CYCLE.map((d) => (
-                  <div
-                    key={d}
-                    className="w-2 h-2 rounded-full transition-all"
-                    style={{
-                      background: d === dayType ? a.color : "#222",
-                      boxShadow: d === dayType ? `0 0 6px ${a.color}88` : "none",
-                    }}
-                  />
+      {/* ── ACTIVE WORKOUT ── */}
+      {activeSession ? (
+        <>
+          {/* Workout stats bar */}
+          <div className="px-4 pt-5 pb-3 border-b border-[#141414]">
+            <div className="max-w-md mx-auto">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: a.color }}>
+                  {a.label} DAY · {a.sub}
+                </p>
+                <span className="text-[10px] text-[#444] font-mono">{pct}%</span>
+              </div>
+              {/* Stats row */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                {[
+                  { label: "TIME", value: fmt(elapsed) },
+                  { label: "VOL", value: volume > 0 ? `${volume.toLocaleString()}kg` : "—" },
+                  { label: "SETS", value: `${doneWorkSets}/${totalWorkSets}` },
+                ].map((s) => (
+                  <div key={s.label} className="bg-[#111] rounded-xl p-2.5 text-center">
+                    <p className="text-[9px] font-black text-[#444] uppercase tracking-widest">{s.label}</p>
+                    <p className="text-sm font-black text-white font-mono mt-0.5">{s.value}</p>
+                  </div>
                 ))}
+              </div>
+              {/* Progress bar */}
+              <div className="h-1 bg-[#1a1a1a] rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${pct}%`, background: pct === 100 ? "#C8FF00" : a.color }}
+                />
               </div>
             </div>
           </div>
 
-          {/* Coach line */}
-          <p className="text-[#444] text-xs font-medium italic mt-3">
-            {coachLine(sessions, dayType, streak)}
-          </p>
+          {/* Exercise tables */}
+          <div className="max-w-md mx-auto px-4 pt-4 pb-52 space-y-3">
+            {exercises.map((ex) => (
+              <ExerciseTable
+                key={ex.name}
+                exercise={ex}
+                sessionId={activeSession.id}
+                logs={logs}
+                prevLogs={prevLogs}
+                extraSets={extraSets[ex.name] ?? 0}
+                onLogsUpdate={setLogs}
+                onAddSet={() => setExtraSets((prev) => ({ ...prev, [ex.name]: (prev[ex.name] ?? 0) + 1 }))}
+                onRestStart={triggerRest}
+                accentColor={a.color}
+              />
+            ))}
+          </div>
 
-          {/* Progress bar */}
-          {activeSession && (
-            <div className="mt-3">
-              <div className="flex justify-between text-[10px] font-black text-[#444] mb-1 uppercase tracking-wider">
-                <span>{doneSets} / {totalSets} sets</span>
-                <span style={{ color: pct === 100 ? "#22c55e" : a.color }}>{pct}%</span>
-              </div>
-              <div className="h-1 bg-[#1a1a1a] rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${pct}%`, background: pct === 100 ? "#22c55e" : a.color }}
+          {/* Fixed bottom */}
+          <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-24 pt-3 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d]/95 to-transparent">
+            <div className="max-w-md mx-auto space-y-2">
+              {restActive && (
+                <RestTimerBar
+                  seconds={restSeconds}
+                  total={30}
+                  onSkip={() => { setRestActive(false); setRestSeconds(30); }}
                 />
+              )}
+              <div className="flex gap-2.5">
+                <button
+                  onClick={() => setShowCancel(true)}
+                  className="flex-1 bg-[#111] border border-[#222] text-[#555] font-bold py-4 rounded-2xl hover:border-red-900/40 hover:text-red-500 transition-all text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={finishWorkout}
+                  className="flex-[2] font-black py-4 rounded-2xl transition-all active:scale-95 text-sm uppercase tracking-wider"
+                  style={
+                    pct === 100
+                      ? { background: "#C8FF00", color: "#000", boxShadow: "0 0 24px rgba(200,255,0,0.4)" }
+                      : { background: "#141414", border: "1px solid #222", color: "#fff" }
+                  }
+                >
+                  {pct === 100 ? "FINISH ✓" : `Finish (${pct}%)`}
+                </button>
               </div>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Exercises */}
-      <div className="max-w-md mx-auto px-4 pb-44 space-y-2.5">
-        {currentProgram.exercises.map((ex, idx) =>
-          activeSession ? (
-            <ExerciseCard
-              key={ex.name}
-              sessionId={activeSession.id}
-              exercise={ex}
-              logs={logs}
-              prevLogs={prevLogs}
-              onLogsUpdate={setLogs}
-              autoOpen={idx === firstIncompleteIdx}
-            />
-          ) : (
-            <div key={ex.name} className="border border-[#1a1a1a] rounded-xl px-4 py-3.5 bg-[#111]">
-              <p className="font-bold text-[#555] text-sm">{ex.name}</p>
-              <p className="text-[10px] text-[#333] mt-0.5">{ex.sets} sets · {ex.reps} reps · {ex.weight}</p>
+          </div>
+        </>
+      ) : (
+        /* ── IDLE (no active session) ── */
+        <>
+          <div className="px-4 pt-10 pb-4 max-w-md mx-auto">
+            {/* Greeting */}
+            <p className="text-[#444] text-[10px] font-bold uppercase tracking-widest mb-1">
+              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+            </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <h1 className="text-4xl font-black tracking-tighter text-white uppercase leading-none">
+                  Welcome back,
+                </h1>
+                <h2 className="text-4xl font-black tracking-tighter leading-none" style={{ color: a.color }}>
+                  KAI
+                </h2>
+              </div>
+              {streak > 0 && (
+                <div className="flex items-center gap-1.5 bg-[#141414] border border-[#222] rounded-full px-3 py-1.5 mt-1">
+                  <span className="text-sm">🔥</span>
+                  <span className="text-white font-black text-sm">{streak}</span>
+                  <span className="text-[#555] text-[9px] uppercase font-bold">streak</span>
+                </div>
+              )}
             </div>
-          )
-        )}
-      </div>
 
-      {/* Bottom CTA */}
-      <div className="fixed bottom-0 left-0 right-0 px-4 pt-4 pb-24 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d]/95 to-transparent z-30">
-        <div className="max-w-md mx-auto">
-          {!activeSession ? (
-            <button
-              onClick={startWorkout}
-              disabled={starting}
-              className={`w-full font-black text-base py-4 rounded-2xl uppercase tracking-widest transition-all active:scale-95 disabled:opacity-40 text-black ${a.glow}`}
-              style={{ background: a.color }}
-            >
-              {starting ? "LOADING…" : `START ${currentProgram.label}`}
-            </button>
-          ) : (
-            <div className="flex gap-2.5">
+            {/* Coach line */}
+            <p className="text-[#555] text-xs italic mt-3">
+              &ldquo;{coachLine(sessions, todayDayType, streak)}&rdquo;
+            </p>
+
+            {/* This week strip */}
+            <div className="mt-4 bg-[#111] border border-[#1a1a1a] rounded-2xl p-3">
+              <p className="text-[9px] font-black text-[#444] uppercase tracking-widest mb-2">This week</p>
+              <div className="grid grid-cols-6 gap-1.5">
+                {weekDays.map((day, i) => {
+                  const str = day.toISOString().split("T")[0];
+                  const dt = completedDates.get(str);
+                  const isToday = str === todayStr;
+                  const isPast = day < today && !isToday;
+                  return (
+                    <div key={i} className="flex flex-col items-center gap-1">
+                      <p className="text-[8px] font-bold text-[#333] uppercase">{["M","T","W","T","F","S"][i]}</p>
+                      <div
+                        className="w-8 h-8 rounded-xl flex items-center justify-center border"
+                        style={
+                          dt
+                            ? { background: ACCENT[dt].color + "22", borderColor: ACCENT[dt].color + "55" }
+                            : isToday
+                            ? { background: a.color + "15", borderColor: a.color + "40" }
+                            : { background: "#0a0a0a", borderColor: "#1a1a1a" }
+                        }
+                      >
+                        {dt
+                          ? <span className="text-[10px] font-black" style={{ color: ACCENT[dt].color }}>✓</span>
+                          : isToday
+                          ? <span className="text-[10px] font-black" style={{ color: a.color }}>·</span>
+                          : isPast
+                          ? <span className="text-[#222] text-[10px]">—</span>
+                          : <span className="text-[#1a1a1a] text-[10px]">·</span>
+                        }
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick stats */}
+            <div className="grid grid-cols-3 gap-2 mt-3">
+              {[
+                { label: "This week", value: weekDays.filter((d) => completedDates.has(d.toISOString().split("T")[0])).length, unit: "sessions" },
+                { label: "All time", value: sessions.filter((s) => s.completed).length, unit: "sessions" },
+                { label: "Last session", value: lastCompleted?.duration_seconds ? fmtDuration(lastCompleted.duration_seconds) : "—", unit: lastCompleted?.duration_seconds ? "" : "" },
+              ].map((s) => (
+                <div key={s.label} className="bg-[#111] border border-[#1a1a1a] rounded-xl p-2.5 text-center">
+                  <p className="text-[9px] font-black text-[#444] uppercase tracking-widest">{s.label}</p>
+                  <p className="font-black text-white text-sm mt-0.5 font-mono">{s.value}</p>
+                  {s.unit && <p className="text-[8px] text-[#333] uppercase">{s.unit}</p>}
+                </div>
+              ))}
+            </div>
+
+            {/* Today's workout preview */}
+            <div className="mt-4 bg-[#111] border border-[#1a1a1a] rounded-2xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#1a1a1a]">
+                <p className="text-[9px] font-black text-[#444] uppercase tracking-widest">Today</p>
+                <p className="font-black text-lg text-white uppercase tracking-tight mt-0.5">
+                  {a.label} <span className="font-normal text-[#555] text-sm normal-case tracking-normal">·  {a.sub}</span>
+                </p>
+              </div>
+              {exercises.map((ex, i) => (
+                <div key={ex.name} className={`flex items-center justify-between px-4 py-2.5 ${i < exercises.length - 1 ? "border-b border-[#111]" : ""}`} style={{ background: "#0d0d0d" }}>
+                  <div>
+                    <p className="text-sm font-semibold text-[#888]">{ex.name}</p>
+                    <p className="text-[10px] text-[#444]">{ex.sets} sets · {ex.reps} reps</p>
+                  </div>
+                  <p className="text-[10px] text-[#333] font-mono">{ex.weight}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Fixed START button */}
+          <div className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-24 pt-4 bg-gradient-to-t from-[#0d0d0d] via-[#0d0d0d]/95 to-transparent">
+            <div className="max-w-md mx-auto">
               <button
-                onClick={() => setShowCancel(true)}
-                className="flex-1 bg-[#141414] border border-[#222] text-[#555] font-bold py-4 rounded-2xl hover:border-red-900/50 hover:text-red-500 transition-all text-sm"
+                onClick={startWorkout}
+                disabled={starting}
+                className="w-full font-black text-base py-4 rounded-2xl uppercase tracking-widest transition-all active:scale-95 disabled:opacity-40 text-black"
+                style={{ background: "#C8FF00", boxShadow: "0 0 32px rgba(200,255,0,0.25)" }}
               >
-                Cancel
-              </button>
-              <button
-                onClick={finishWorkout}
-                className={`flex-[2] font-black py-4 rounded-2xl uppercase tracking-wider transition-all active:scale-95 text-sm ${
-                  pct === 100
-                    ? "text-black shadow-[0_0_24px_rgba(34,197,94,0.4)]"
-                    : "bg-[#141414] border border-[#222] text-white"
-                }`}
-                style={pct === 100 ? { background: "#22c55e" } : undefined}
-              >
-                {pct === 100 ? "DONE ✓" : `FINISH (${pct}%)`}
+                {starting ? "LOADING…" : `START ${a.label}`}
               </button>
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </>
+      )}
 
       <BottomNav />
     </div>

@@ -30,4 +30,7 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT NOW()
     )
   `;
+
+  // Additive migrations — safe to run on every cold start
+  await sql`ALTER TABLE workout_sessions ADD COLUMN IF NOT EXISTS duration_seconds INTEGER`;
 }

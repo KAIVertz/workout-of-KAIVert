@@ -26,10 +26,13 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const { completed }: { completed: boolean } = await req.json();
+    const { completed, duration_seconds }: { completed: boolean; duration_seconds?: number } = await req.json();
     const sql = getDb();
     await sql`
-      UPDATE workout_sessions SET completed = ${completed} WHERE id = ${id}
+      UPDATE workout_sessions
+      SET completed = ${completed},
+          duration_seconds = COALESCE(${duration_seconds ?? null}, duration_seconds)
+      WHERE id = ${id}
     `;
     return NextResponse.json({ ok: true });
   } catch (e) {

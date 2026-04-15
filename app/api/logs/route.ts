@@ -32,6 +32,22 @@ export async function POST(req: NextRequest) {
   }
 }
 
+export async function DELETE(req: NextRequest) {
+  try {
+    const body: { session_id: number; exercise_name: string; set_number: number } = await req.json();
+    const sql = getDb();
+    await sql`
+      DELETE FROM exercise_logs
+      WHERE session_id = ${body.session_id}
+        AND exercise_name = ${body.exercise_name}
+        AND set_number = ${body.set_number}
+    `;
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
