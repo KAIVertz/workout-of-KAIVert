@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { DAY_LABEL } from "@/lib/program";
-import { BottomNav } from "@/components/BottomNav";
+import { TopNav } from "@/components/BottomNav";
 
 interface Session { id: number; date: string; day_type: string; completed: boolean; duration_seconds?: number; }
 interface Log { exercise_name: string; set_number: number; reps: number; weight_kg: number; }
@@ -94,7 +94,7 @@ export default function HistoryPage() {
           ? <div className="py-20 text-center"><p className="text-white font-semibold mb-2">Aucune séance</p><p className="text-[#444] text-sm">Commence ta première séance.</p></div>
           : sessions.map((s) => <SessionRow key={s.id} s={s} />)}
       </div>
-      <BottomNav />
+      <TopNav />
     </div>
   );
 }
