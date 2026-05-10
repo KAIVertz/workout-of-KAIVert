@@ -7,22 +7,25 @@ const TABS = [
   { href: "/history", label: "Historique" },
 ];
 
-export function TopNav() {
+export function TopNav({ light = false }: { light?: boolean }) {
   const path = usePathname();
+  const base = light ? "text-white/60 hover:text-white" : "text-[#444] hover:text-white";
+  const active = light ? "text-white font-semibold" : "text-white font-semibold";
   return (
-    <nav className="flex items-center justify-between px-5 pt-12 pb-4 border-b border-[#111]">
-      <span className="text-white font-semibold text-sm">KAIVert</span>
-      <div className="flex gap-5">
+    <div className="flex items-center justify-between">
+      <span className={`text-sm font-bold tracking-widest uppercase ${light ? "text-white" : "text-white"}`}>
+        KAI
+      </span>
+      <div className="flex gap-6">
         {TABS.map((t) => (
           <Link key={t.href} href={t.href}
-            className={`text-sm transition-colors ${path === t.href ? "text-white font-medium" : "text-[#444]"}`}>
+            className={`text-sm transition-colors ${path === t.href ? active : base}`}>
             {t.label}
           </Link>
         ))}
       </div>
-    </nav>
+    </div>
   );
 }
 
-// Keep old name for compatibility
-export function BottomNav() { return <TopNav />; }
+export function BottomNav() { return null; }
