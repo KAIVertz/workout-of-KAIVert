@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "KAIVert",
-  viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
-};
+export const metadata: Metadata = { title: "KAIVert" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

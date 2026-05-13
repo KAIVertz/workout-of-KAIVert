@@ -3,29 +3,33 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
-  { href: "/", label: "Aujourd'hui" },
-  { href: "/history", label: "Historique" },
+  { href: "/",        label: "Aujourd'hui" },
+  { href: "/history", label: "Historique"  },
 ];
 
-export function TopNav({ light = false }: { light?: boolean }) {
+export function TopNav({ inverted = false }: { inverted?: boolean }) {
   const path = usePathname();
-  const base = light ? "text-white/60 hover:text-white" : "text-[#444] hover:text-white";
-  const active = light ? "text-white font-semibold" : "text-white font-semibold";
+  const dimColor = inverted ? "rgba(255,255,255,0.5)" : "#6b7280";
+  const activeColor = inverted ? "#ffffff" : "#ffffff";
   return (
-    <div className="flex items-center justify-between">
-      <span className={`text-sm font-bold tracking-widest uppercase ${light ? "text-white" : "text-white"}`}>
+    <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <span style={{ fontWeight: 800, fontSize: 13, letterSpacing: "0.15em", color: inverted ? "#fff" : "#fff" }}>
         KAI
       </span>
-      <div className="flex gap-6">
+      <div style={{ display: "flex", gap: 24 }}>
         {TABS.map((t) => (
           <Link key={t.href} href={t.href}
-            className={`text-sm transition-colors ${path === t.href ? active : base}`}>
+            style={{
+              fontSize: 14,
+              fontWeight: path === t.href ? 600 : 400,
+              color: path === t.href ? activeColor : dimColor,
+              textDecoration: "none",
+              transition: "color 0.15s",
+            }}>
             {t.label}
           </Link>
         ))}
       </div>
-    </div>
+    </nav>
   );
 }
-
-export function BottomNav() { return null; }

@@ -1,22 +1,23 @@
 "use client";
 import { useEffect, useState } from "react";
 import { DAY_LABEL } from "@/lib/program";
-
+import { TopNav } from "@/components/BottomNav";
 
 interface Session { id: number; date: string; day_type: string; completed: boolean; duration_seconds?: number; }
 interface Log { exercise_name: string; set_number: number; reps: number; weight_kg: number; }
 
-function fmtDur(s: number) { const m = Math.floor(s/60); return m < 60 ? `${m}min` : `${Math.floor(m/60)}h${m%60}`; }
+function fmtDur(s: number) { const m = Math.floor(s / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${m % 60 > 0 ? ` ${m % 60}` : ""}`; }
 
 function SessionRow({ s }: { s: Session }) {
   const [logs, setLogs] = useState<Log[]>([]);
   const [open, setOpen] = useState(false);
-  const info = DAY_LABEL[s.day_type as keyof typeof DAY_LABEL] ?? { label: s.day_type, color: "#666" };
+  const info = DAY_LABEL[s.day_type as keyof typeof DAY_LABEL] ?? { label: s.day_type, color: "#6b7280" };
 
   async function toggle() {
     if (!open && !logs.length) {
       const r = await fetch(`/api/sessions/${s.id}`);
-      setLogs(await r.json());
+      const d = await r.json();
+      if (Array.isArray(d)) setLogs(d);
     }
     setOpen((o) => !o);
   }
@@ -26,34 +27,40 @@ function SessionRow({ s }: { s: Session }) {
   const workSets = logs.filter((l) => l.set_number > 0).length;
 
   return (
-    <div className="border-b border-[#0d0d0d]">
-      <button onClick={toggle} className="w-full flex items-center justify-between py-4 text-left">
-        <div className="flex items-center gap-3">
-          <div className="w-1.5 h-1.5 rounded-full mt-0.5 shrink-0" style={{ background: info.color }} />
+    <div style={{ borderBottom: "1px solid #1a1a2e" }}>
+      <button onClick={toggle} style={{ width: "100%", display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "16px 0", background: "none", border: "none", cursor: "pointer", color: "inherit", textAlign: "left" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: info.color, marginTop: 6, flexShrink: 0 }} />
           <div>
-            <p className="text-white text-sm">
+            <p style={{ fontSize: 15, fontWeight: 500, color: "#fff" }}>
               {new Date(s.date + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "short" })}
             </p>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs" style={{ color: info.color }}>{info.label}</span>
-              {s.duration_seconds && <span className="text-[#444] text-xs">{fmtDur(s.duration_seconds)}</span>}
-              {open && workSets > 0 && <span className="text-[#444] text-xs">{workSets} séries</span>}
+            <div style={{ display: "flex", gap: 12, marginTop: 3 }}>
+              <span style={{ fontSize: 12, color: info.color }}>{info.label}</span>
+              {s.duration_seconds && <span style={{ fontSize: 12, color: "#374151" }}>{fmtDur(s.duration_seconds)}</span>}
+              {open && workSets > 0 && <span style={{ fontSize: 12, color: "#374151" }}>{workSets} séries</span>}
             </div>
           </div>
         </div>
-        <span className="text-[#333] text-xs">{open ? "▲" : "▼"}</span>
+        <span style={{ fontSize: 11, color: "#374151", paddingTop: 4 }}>{open ? "▲" : "▼"}</span>
       </button>
+
       {open && (
-        <div className="pb-4 pl-5 pr-4">
-          {Object.keys(byEx).length === 0 ? <p className="text-[#444] text-sm">Aucune série.</p> :
-            Object.entries(byEx).map(([name, sets]) => (
-              <div key={name} className="mb-3">
-                <p className="text-[#444] text-xs uppercase tracking-wider mb-1.5">{name}</p>
-                <div className="flex flex-wrap gap-1.5">
+        <div style={{ paddingBottom: 16, paddingLeft: 18 }}>
+          {Object.keys(byEx).length === 0
+            ? <p style={{ fontSize: 13, color: "#374151" }}>Aucune série enregistrée.</p>
+            : Object.entries(byEx).map(([name, sets]) => (
+              <div key={name} style={{ marginBottom: 14 }}>
+                <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>{name}</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {sets.sort((a, b) => a.set_number - b.set_number).map((l) => (
-                    <span key={l.set_number} className="text-xs font-mono px-2 py-1 rounded-lg"
-                      style={{ background: l.set_number === 0 ? "#1a1200" : "#0d0d0d", color: l.set_number === 0 ? "#ca8a04" : "#666", border: "1px solid #1a1a1a" }}>
-                      {l.set_number === 0 ? "W " : ""}{l.reps > 0 ? `${l.reps}×${l.weight_kg}kg` : "—"}
+                    <span key={l.set_number} style={{
+                      fontSize: 12, fontFamily: "monospace",
+                      padding: "4px 10px", borderRadius: 8,
+                      background: "#10101a", border: "1px solid #1a1a2e",
+                      color: l.reps > 0 ? "#9ca3af" : "#374151",
+                    }}>
+                      {l.reps > 0 ? `${l.reps}×${l.weight_kg}kg` : "—"}
                     </span>
                   ))}
                 </div>
@@ -71,30 +78,37 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function load() {
-      try {
-        const r = await fetch("/api/sessions");
-        const data = await r.json();
-        setSessions(Array.isArray(data) ? data.filter((s: Session) => s.completed) : []);
-      } finally { setLoading(false); }
-    }
-    load();
+    fetch("/api/sessions")
+      .then((r) => r.json())
+      .then((d) => setSessions(Array.isArray(d) ? d.filter((s: Session) => s.completed) : []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><p className="text-[#333] text-sm">Chargement…</p></div>;
+  if (loading) return (
+    <div style={{ minHeight: "100svh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <p style={{ color: "#374151", fontSize: 14 }}>Chargement…</p>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-black pb-28">
-      <div className="px-5 pt-14 pb-6 border-b border-[#111]">
-        <p className="text-[#444] text-sm mb-1">{sessions.length} séances</p>
-        <h1 className="text-4xl font-bold tracking-tight">Historique</h1>
+    <div style={{ minHeight: "100svh", background: "#08080d" }}>
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "48px 20px 48px" }}>
+        <TopNav />
+        <div style={{ marginTop: 32, marginBottom: 32 }}>
+          <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 4 }}>{sessions.length} séances</p>
+          <h1 style={{ fontSize: 40, fontWeight: 900, letterSpacing: "-0.03em", color: "#fff" }}>Historique</h1>
+        </div>
+
+        {sessions.length === 0 ? (
+          <div style={{ paddingTop: 60, textAlign: "center" }}>
+            <p style={{ color: "#fff", fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Aucune séance</p>
+            <p style={{ color: "#374151", fontSize: 14 }}>Commence ta première séance.</p>
+          </div>
+        ) : (
+          sessions.map((s) => <SessionRow key={s.id} s={s} />)
+        )}
       </div>
-      <div className="max-w-md mx-auto px-5 py-4">
-        {sessions.length === 0
-          ? <div className="py-20 text-center"><p className="text-white font-semibold mb-2">Aucune séance</p><p className="text-[#444] text-sm">Commence ta première séance.</p></div>
-          : sessions.map((s) => <SessionRow key={s.id} s={s} />)}
-      </div>
-      
     </div>
   );
 }

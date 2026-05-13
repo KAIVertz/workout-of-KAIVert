@@ -1,132 +1,175 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { PROGRAM, DAY_LABEL, getTodayType, localDate, computeStreak, getMissedDays, Exercise } from "@/lib/program";
-import { ExerciseIllustration } from "@/components/ExerciseIllustration";
+import {
+  PROGRAM, DAY_LABEL, getTodayType, localDate,
+  computeStreak, getMissedDays, Exercise,
+} from "@/lib/program";
 import { TopNav } from "@/components/BottomNav";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface Session {
   id: number; date: string; day_type: string;
   completed: boolean; created_at: string; duration_seconds?: number;
 }
-interface Log { exercise_name: string; set_number: number; reps: number; weight_kg: number; }
+interface Log {
+  exercise_name: string; set_number: number;
+  reps: number; weight_kg: number;
+}
 
-function parseWeight(w: string) { const m = w.match(/(\d+)/); return m ? +m[1] : 0; }
-function parseReps(r: string)   { const m = r.match(/(\d+)/); return m ? +m[1] : 10; }
-function fmt(s: number) { return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,"0")}`; }
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function fmt(s: number) {
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+}
+function fmtDur(s: number) {
+  const m = Math.floor(s / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${m % 60 > 0 ? ` ${m % 60}` : ""}`;
+}
+function parseWeight(w: string): number {
+  const m = w.match(/(\d+)/);
+  return m ? parseInt(m[1]) : 0;
+}
+function parseReps(r: string): number {
+  const m = r.match(/(\d+)/);
+  return m ? parseInt(m[1]) : 10;
+}
 
-// ─── Exercise Card ─────────────────────────────────────────────────────────────
+// ─── Exercise Card ────────────────────────────────────────────────────────────
 function ExerciseCard({
-  ex, sessionId, logs, onLogsUpdate, color,
+  ex, sessionId, logs, prevLogs, onLogsUpdate, accent,
 }: {
   ex: Exercise; sessionId: number;
-  logs: Log[]; onLogsUpdate: (l: Log[]) => void; color: string;
+  logs: Log[]; prevLogs: Log[];
+  onLogsUpdate: (l: Log[]) => void;
+  accent: string;
 }) {
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<Set<number>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(true);
+
   const dw = parseWeight(ex.weight);
   const dr = parseReps(ex.reps);
 
-  const saved = (sn: number) => logs.find((l) => l.exercise_name === ex.name && l.set_number === sn);
-  const doneSets = Array.from({ length: ex.sets }, (_, i) => i + 1).filter((s) => saved(s)).length;
-  const warmupDone = !!saved(0);
-  const allDone = warmupDone && doneSets === ex.sets;
+  const saved = (sn: number) =>
+    logs.find((l) => l.exercise_name === ex.name && l.set_number === sn);
+
+  const doneSets = Array.from({ length: ex.sets }, (_, i) => i + 1)
+    .filter((s) => saved(s)).length;
+  const allDone = doneSets === ex.sets;
+
+  // Previous session summary
+  const prevForEx = prevLogs.filter((l) => l.exercise_name === ex.name && l.set_number > 0);
+  const prevMax = prevForEx.length
+    ? { reps: Math.max(...prevForEx.map((l) => l.reps)), kg: Math.max(...prevForEx.map((l) => Number(l.weight_kg))) }
+    : null;
 
   async function tap(sn: number) {
     if (busy.has(sn)) return;
-    const exists = saved(sn);
-    if (exists) {
+    setError(null);
+    const existing = saved(sn);
+    const snapshot = logs;
+
+    // Optimistic update
+    if (existing) {
       onLogsUpdate(logs.filter((l) => !(l.exercise_name === ex.name && l.set_number === sn)));
     } else {
       onLogsUpdate([...logs, { exercise_name: ex.name, set_number: sn, reps: dr, weight_kg: dw }]);
     }
+
     setBusy((b) => new Set(b).add(sn));
-    await fetch(exists ? "/api/logs" : "/api/logs", {
-      method: exists ? "DELETE" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(exists
-        ? { session_id: sessionId, exercise_name: ex.name, set_number: sn }
-        : { session_id: sessionId, exercise_name: ex.name, set_number: sn, reps: dr, weight_kg: dw }
-      ),
-    });
+    try {
+      const res = await fetch("/api/logs", {
+        method: existing ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(existing
+          ? { session_id: sessionId, exercise_name: ex.name, set_number: sn }
+          : { session_id: sessionId, exercise_name: ex.name, set_number: sn, reps: dr, weight_kg: dw }
+        ),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch {
+      // Rollback on error
+      onLogsUpdate(snapshot);
+      setError("Erreur réseau — retente");
+    }
     setBusy((b) => { const s = new Set(b); s.delete(sn); return s; });
   }
 
   return (
-    <div style={{ opacity: allDone ? 0.4 : 1 }} className="transition-opacity">
-      {/* Header — always visible */}
+    <div style={{
+      borderBottom: "1px solid #1a1a2e",
+      opacity: allDone ? 0.45 : 1,
+      transition: "opacity 0.3s",
+    }}>
+      {/* Header */}
       <button onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-start justify-between py-5 border-b border-[#0f0f0f] text-left">
-        <div className="flex-1">
-          <p className="text-white font-semibold text-base leading-tight">{ex.name}</p>
-          <p className="text-[#444] text-xs mt-1.5 uppercase tracking-wider">{ex.muscle} · {ex.sets} × {ex.reps} · {ex.weight}</p>
-        </div>
-        <div className="flex items-center gap-3 ml-4 shrink-0 pt-0.5">
-          {/* Mini set indicators */}
-          <div className="flex gap-1">
-            {Array.from({ length: ex.sets }, (_, i) => i + 1).map((s) => (
-              <div key={s} className="w-1.5 h-1.5 rounded-full"
-                style={{ background: saved(s) ? color : "#222" }} />
-            ))}
+        style={{ width: "100%", textAlign: "left", padding: "16px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontWeight: 600, fontSize: 15, color: "#fff" }}>{ex.name}</span>
+            <span style={{ fontSize: 12, color: "#6b7280" }}>{ex.muscle}</span>
           </div>
-          <span className="text-[#2a2a2a] text-xs">{open ? "▲" : "▼"}</span>
+          {prevMax && (
+            <p style={{ fontSize: 11, color: "#374151", marginTop: 3 }}>
+              Dernière fois : {prevMax.reps} reps · {prevMax.kg}kg
+            </p>
+          )}
+          <p style={{ fontSize: 12, color: "#374151", marginTop: 2 }}>
+            {ex.sets} × {ex.reps} · {ex.weight}
+          </p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: 12, paddingTop: 2, flexShrink: 0 }}>
+          <span style={{ fontSize: 12, color: allDone ? accent : "#374151", fontWeight: allDone ? 600 : 400 }}>
+            {allDone ? "✓" : `${doneSets}/${ex.sets}`}
+          </span>
+          <span style={{ fontSize: 11, color: "#374151" }}>{open ? "▲" : "▼"}</span>
         </div>
       </button>
 
       {/* Expanded content */}
       {open && (
-        <div className="py-6 border-b border-[#111]">
-          {/* Illustration */}
-          <div className="flex justify-center mb-5">
-            <div style={{ opacity: 0.7 }}>
-              <ExerciseIllustration type={ex.illustration} />
-            </div>
-          </div>
-
-          {/* Tip */}
-          <p className="text-[#555] text-sm leading-relaxed mb-7 italic">{ex.tip}</p>
-
-          {/* Sets — numbered buttons */}
-          <div className="space-y-4">
-            {/* Warmup */}
-            <div className="flex items-center gap-3">
-              <button onClick={() => tap(0)} disabled={busy.has(0)}
-                className="w-12 h-12 rounded-2xl text-sm font-bold transition-all disabled:opacity-40 border"
-                style={warmupDone
-                  ? { background: "#ca8a04", borderColor: "#ca8a04", color: "#000" }
-                  : { borderColor: "#ca8a04", color: "#ca8a04", background: "transparent" }}>
-                W
-              </button>
-              <div>
-                <p className="text-xs text-[#333] uppercase tracking-wider">Échauffement</p>
-                <p className="text-xs text-[#222] mt-0.5">Poids léger · {ex.reps} reps</p>
-              </div>
-            </div>
-
-            {/* Working sets */}
-            <div className="flex gap-2 flex-wrap">
-              {Array.from({ length: ex.sets }, (_, i) => i + 1).map((s) => (
-                <button key={s} onClick={() => tap(s)} disabled={busy.has(s)}
-                  className="w-12 h-12 rounded-2xl text-base font-bold transition-all disabled:opacity-40 border"
-                  style={saved(s)
-                    ? { background: color, borderColor: color, color: "#000" }
-                    : { borderColor: "#1e1e1e", color: "#444", background: "transparent" }}>
-                  {s}
+        <div style={{ paddingBottom: 20 }}>
+          {error && (
+            <p style={{ fontSize: 12, color: "#ef4444", marginBottom: 10 }}>{error}</p>
+          )}
+          {/* Set buttons */}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {Array.from({ length: ex.sets }, (_, i) => i + 1).map((s) => {
+              const done = !!saved(s);
+              const isBusy = busy.has(s);
+              return (
+                <button key={s} onClick={() => tap(s)} disabled={isBusy}
+                  style={{
+                    width: 52, height: 52, borderRadius: 14, border: "none",
+                    fontWeight: 700, fontSize: 16, cursor: isBusy ? "wait" : "pointer",
+                    transition: "background 0.15s, color 0.15s, transform 0.1s",
+                    background: done ? accent : "#10101a",
+                    color: done ? "#fff" : "#6b7280",
+                    outline: done ? "none" : `1px solid #1a1a2e`,
+                    transform: isBusy ? "scale(0.95)" : "scale(1)",
+                    opacity: isBusy ? 0.7 : 1,
+                  }}>
+                  {isBusy ? "…" : s}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
+          {/* Tip */}
+          <p style={{ fontSize: 12, color: "#374151", fontStyle: "italic", marginTop: 12, lineHeight: 1.5 }}>
+            {ex.tip}
+          </p>
         </div>
       )}
     </div>
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [active, setActive] = useState<Session | null>(null);
   const [logs, setLogs] = useState<Log[]>([]);
+  const [prevLogs, setPrevLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -137,6 +180,7 @@ export default function HomePage() {
   const { label, sub, color } = DAY_LABEL[dayType];
   const exercises = PROGRAM[dayType];
 
+  // Workout timer
   useEffect(() => {
     if (!active) { setElapsed(0); return; }
     const start = new Date(active.created_at).getTime();
@@ -153,6 +197,14 @@ export default function HomePage() {
     return arr;
   }, []);
 
+  async function loadPrevLogs(dayT: string, excludeId: number, allSessions: Session[]) {
+    const prev = allSessions.find((s) => s.completed && s.day_type === dayT && s.id !== excludeId);
+    if (!prev) return;
+    const r = await fetch(`/api/sessions/${prev.id}`);
+    const data = await r.json();
+    if (Array.isArray(data)) setPrevLogs(data);
+  }
+
   useEffect(() => {
     async function init() {
       try {
@@ -163,10 +215,15 @@ export default function HomePage() {
         if (todaySess) {
           setActive(todaySess);
           const r = await fetch(`/api/sessions/${todaySess.id}`);
-          setLogs(await r.json());
+          const logData = await r.json();
+          if (Array.isArray(logData)) setLogs(logData);
+          await loadPrevLogs(todaySess.day_type, todaySess.id, data);
         }
-      } catch (e) { console.error(e); }
-      finally { setLoading(false); }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
     }
     init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -174,112 +231,136 @@ export default function HomePage() {
   async function startWorkout() {
     setStarting(true);
     try {
+      const today = localDate(); // client sends its own local date
       const r = await fetch("/api/sessions", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ day_type: dayType }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ day_type: dayType, date: today }),
       });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const sess = await r.json();
-      setActive(sess); setLogs([]);
-      fetchSessions();
-    } finally { setStarting(false); }
+      setActive(sess);
+      setLogs([]);
+      setPrevLogs([]);
+      const updated = await fetchSessions();
+      await loadPrevLogs(dayType, sess.id, updated);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setStarting(false);
+    }
   }
 
   async function finishWorkout() {
     if (!active) return;
     await fetch(`/api/sessions/${active.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ completed: true, duration_seconds: elapsed }),
     });
-    setActive(null); setLogs([]); setConfirmFinish(false);
+    setActive(null); setLogs([]); setPrevLogs([]); setConfirmFinish(false);
     fetchSessions();
   }
 
   async function cancelWorkout() {
     if (!active) return;
     await fetch(`/api/sessions/${active.id}`, { method: "DELETE" });
-    setActive(null); setLogs([]);
+    setActive(null); setLogs([]); setPrevLogs([]);
     fetchSessions();
   }
 
   const totalSets = exercises.reduce((acc, ex) => acc + ex.sets, 0);
   const doneSets = exercises.reduce((acc, ex) =>
-    acc + Array.from({ length: ex.sets }, (_, i) => i + 1).filter((s) =>
-      logs.some((l) => l.exercise_name === ex.name && l.set_number === s)
-    ).length, 0);
+    acc + Array.from({ length: ex.sets }, (_, i) => i + 1)
+      .filter((s) => logs.some((l) => l.exercise_name === ex.name && l.set_number === s)).length,
+    0);
   const pct = totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
+
   const streak = computeStreak(sessions);
   const missed = getMissedDays(sessions);
-  const completedCount = sessions.filter((s) => s.completed).length;
 
   if (loading) return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
-      <p className="text-[#333] text-sm">…</p>
+    <div style={{ minHeight: "100svh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <p style={{ color: "#374151", fontSize: 14 }}>Chargement…</p>
     </div>
   );
 
-  // ── ACTIVE WORKOUT ──────────────────────────────────────────────────────────
+  // ── ACTIVE WORKOUT ───────────────────────────────────────────────────────────
   if (active) {
     return (
-      <div className="min-h-screen bg-black">
+      <div style={{ minHeight: "100svh", background: "#08080d" }}>
         {/* Sticky top bar */}
-        <div className="sticky top-0 z-20 bg-black px-5 pt-12 pb-5">
-          <div className="max-w-md mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <button onClick={cancelWorkout} className="text-[#444] text-sm hover:text-[#666] transition-colors">
+        <div style={{
+          position: "sticky", top: 0, zIndex: 20,
+          background: "#08080d", borderBottom: "1px solid #1a1a2e",
+          padding: "48px 20px 16px",
+        }}>
+          <div style={{ maxWidth: 480, margin: "0 auto" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <button onClick={cancelWorkout}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#6b7280", fontSize: 14 }}>
                 Annuler
               </button>
-              <span className="text-4xl font-black tabular-nums tracking-tighter">{fmt(elapsed)}</span>
+              <span style={{ fontWeight: 800, fontSize: 28, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" }}>
+                {fmt(elapsed)}
+              </span>
               <button
-                onClick={() => pct === 100 ? finishWorkout() : setConfirmFinish(!confirmFinish)}
-                className="text-sm font-bold px-4 py-2 rounded-xl transition-all"
-                style={pct === 100
-                  ? { background: "#fff", color: "#000" }
-                  : confirmFinish
-                  ? { background: color, color: "#000" }
-                  : { background: "#111", color: "#666", border: "1px solid #1a1a1a" }}>
+                onClick={() => pct === 100 ? finishWorkout() : setConfirmFinish((c) => !c)}
+                style={{
+                  padding: "8px 16px", borderRadius: 12, border: "none",
+                  cursor: "pointer", fontWeight: 700, fontSize: 14, transition: "all 0.2s",
+                  background: pct === 100 ? "#fff" : confirmFinish ? color : "#10101a",
+                  color: pct === 100 ? "#08080d" : confirmFinish ? "#fff" : "#6b7280",
+                  outline: confirmFinish || pct === 100 ? "none" : "1px solid #1a1a2e",
+                }}>
                 {pct === 100 ? "Terminer ✓" : confirmFinish ? "Confirmer" : `${pct}%`}
               </button>
             </div>
             {/* Progress bar */}
-            <div className="h-0.5 bg-[#111] rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${pct}%`, background: pct === 100 ? "#fff" : color }} />
+            <div style={{ height: 2, background: "#1a1a2e", borderRadius: 2, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 2, transition: "width 0.5s",
+                width: `${pct}%`,
+                background: pct === 100 ? "#fff" : color,
+              }} />
             </div>
+            {confirmFinish && pct < 100 && (
+              <p style={{ fontSize: 12, color: "#6b7280", textAlign: "center", marginTop: 8 }}>
+                Appuie encore sur « Confirmer » pour enregistrer à {pct}%
+              </p>
+            )}
           </div>
         </div>
 
         {/* Exercise list */}
-        <div className="max-w-md mx-auto px-5 pb-16">
+        <div style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px" }}>
           {exercises.map((ex) => (
             <ExerciseCard key={ex.name} ex={ex}
-              sessionId={active.id} logs={logs}
-              onLogsUpdate={setLogs} color={color} />
+              sessionId={active.id} logs={logs} prevLogs={prevLogs}
+              onLogsUpdate={setLogs} accent={color} />
           ))}
 
-          {/* Inline finish button */}
-          <div className="pt-8 pb-4">
+          {/* Inline finish */}
+          <div style={{ paddingTop: 32 }}>
             {confirmFinish ? (
-              <div className="space-y-3">
-                <p className="text-[#444] text-sm text-center">Terminer à {pct}% ?</p>
-                <div className="flex gap-3">
-                  <button onClick={() => setConfirmFinish(false)}
-                    className="flex-1 py-4 rounded-2xl border border-[#1a1a1a] text-[#555] text-sm font-semibold">
-                    Continuer
-                  </button>
-                  <button onClick={finishWorkout}
-                    className="flex-1 py-4 rounded-2xl text-black text-sm font-bold"
-                    style={{ background: color }}>
-                    Terminer
-                  </button>
-                </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <button onClick={() => setConfirmFinish(false)}
+                  style={{ flex: 1, padding: "16px 0", borderRadius: 16, border: "1px solid #1a1a2e", background: "transparent", color: "#6b7280", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                  Continuer
+                </button>
+                <button onClick={finishWorkout}
+                  style={{ flex: 1, padding: "16px 0", borderRadius: 16, border: "none", background: color, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                  Terminer
+                </button>
               </div>
             ) : (
-              <button
-                onClick={() => pct === 100 ? finishWorkout() : setConfirmFinish(true)}
-                className="w-full py-4 rounded-2xl text-sm font-bold transition-all"
-                style={pct === 100
-                  ? { background: "#fff", color: "#000" }
-                  : { background: "#111", color: "#555", border: "1px solid #1a1a1a" }}>
+              <button onClick={() => pct === 100 ? finishWorkout() : setConfirmFinish(true)}
+                style={{
+                  width: "100%", padding: "18px 0", borderRadius: 16, border: pct === 100 ? "none" : "1px solid #1a1a2e",
+                  background: pct === 100 ? "#fff" : "transparent",
+                  color: pct === 100 ? "#08080d" : "#6b7280",
+                  fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "all 0.2s",
+                }}>
                 {pct === 100 ? "Terminer la séance ✓" : `Terminer (${pct}%)`}
               </button>
             )}
@@ -289,88 +370,97 @@ export default function HomePage() {
     );
   }
 
-  // ── IDLE ────────────────────────────────────────────────────────────────────
+  // ── IDLE ─────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-black">
-      <div className="max-w-md mx-auto">
+    <div style={{ minHeight: "100svh", background: "#08080d" }}>
+      {/* Hero — colored section */}
+      <div style={{
+        background: `linear-gradient(135deg, ${color}22 0%, ${color}08 100%)`,
+        borderBottom: `1px solid ${color}20`,
+        padding: "48px 20px 32px",
+      }}>
+        <div style={{ maxWidth: 480, margin: "0 auto" }}>
+          <TopNav inverted />
 
-        {/* Hero header — colored block */}
-        <div className="px-5 pt-12 pb-8" style={{ background: color }}>
-          <TopNav light />
-
-          <div className="mt-10">
-            {/* Day label */}
-            <p className="text-white/50 text-xs uppercase tracking-widest font-semibold mb-2">
+          <div style={{ marginTop: 32 }}>
+            <p style={{ fontSize: 12, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 8 }}>
               {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
             </p>
-            <h1 className="text-7xl font-black tracking-tighter text-white leading-none uppercase">
+            <h1 style={{ fontSize: 64, fontWeight: 900, letterSpacing: "-0.04em", lineHeight: 1, color: "#fff", textTransform: "uppercase" }}>
               {label}
             </h1>
-            <p className="text-white/50 text-sm mt-3 font-medium">{sub}</p>
+            <p style={{ fontSize: 14, color: "#6b7280", marginTop: 8 }}>{sub}</p>
           </div>
 
-          {/* Stats in header */}
-          <div className="flex items-end justify-between mt-8">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginTop: 28 }}>
             {streak > 0 ? (
               <div>
-                <p className="text-white/40 text-xs uppercase tracking-widest">Série</p>
-                <p className="text-white font-black text-4xl leading-none mt-1">{streak}<span className="text-white/50 text-lg font-normal ml-1">j</span></p>
+                <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.1em" }}>Série</p>
+                <p style={{ fontSize: 36, fontWeight: 900, color: "#fff", lineHeight: 1, marginTop: 2 }}>
+                  {streak}<span style={{ fontSize: 14, fontWeight: 400, color: "#6b7280", marginLeft: 4 }}>jours</span>
+                </p>
               </div>
             ) : <div />}
-            {completedCount > 0 && (
-              <div className="text-right">
-                <p className="text-white/40 text-xs uppercase tracking-widest">Séances</p>
-                <p className="text-white font-black text-4xl leading-none mt-1">{completedCount}</p>
+            {sessions.filter((s) => s.completed).length > 0 && (
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.1em" }}>Total</p>
+                <p style={{ fontSize: 36, fontWeight: 900, color: "#fff", lineHeight: 1, marginTop: 2 }}>
+                  {sessions.filter((s) => s.completed).length}
+                </p>
               </div>
             )}
           </div>
         </div>
+      </div>
 
-        {/* Content on black */}
-        <div className="px-5">
+      {/* Content */}
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px" }}>
+        {/* Adaptation message */}
+        {missed >= 1 && (
+          <div style={{ margin: "20px 0", padding: "14px 16px", borderRadius: 14, border: "1px solid #1a1a2e", display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <span style={{ color: color, fontSize: 14, fontWeight: 700, marginTop: 1, flexShrink: 0 }}>↑</span>
+            <p style={{ fontSize: 14, color: "#9ca3af", lineHeight: 1.5 }}>
+              {missed === 1
+                ? "Tu as raté hier — reviens fort."
+                : `${missed} jours d'arrêt — séance intensifiée.`}
+            </p>
+          </div>
+        )}
 
-          {/* Adaptation message */}
-          {missed >= 1 && (
-            <div className="mt-6 flex items-start gap-3 p-4 rounded-2xl border border-[#1a1a1a]">
-              <span style={{ color }} className="text-sm mt-0.5 font-bold">↑</span>
-              <p className="text-[#777] text-sm leading-relaxed">
-                {missed === 1
-                  ? "Tu as raté hier — reviens fort."
-                  : `${missed} jours d'arrêt — intensité max aujourd'hui.`}
+        {/* Programme */}
+        <div style={{ marginTop: missed >= 1 ? 0 : 28 }}>
+          <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 16 }}>
+            Programme du jour
+          </p>
+          {exercises.map((ex, i) => (
+            <div key={ex.name} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+              padding: "14px 0",
+              borderBottom: i < exercises.length - 1 ? "1px solid #1a1a2e" : "none",
+            }}>
+              <div>
+                <p style={{ fontSize: 15, fontWeight: 500, color: "#fff" }}>{ex.name}</p>
+                <p style={{ fontSize: 12, color: "#374151", marginTop: 3 }}>{ex.muscle}</p>
+              </div>
+              <p style={{ fontSize: 13, color: "#6b7280", fontVariantNumeric: "tabular-nums", marginLeft: 16, flexShrink: 0, paddingTop: 1 }}>
+                {ex.sets}×{ex.reps}
               </p>
             </div>
-          )}
+          ))}
+        </div>
 
-          {/* Programme preview */}
-          <div className="mt-8 mb-2">
-            <p className="text-[#333] text-xs uppercase tracking-widest font-semibold mb-5">Programme</p>
-            <div className="space-y-px">
-              {exercises.map((ex, i) => (
-                <div key={ex.name}
-                  className={`flex items-center justify-between py-4 ${i < exercises.length - 1 ? "border-b border-[#0d0d0d]" : ""}`}>
-                  <div>
-                    <p className="text-white font-medium">{ex.name}</p>
-                    <p className="text-[#333] text-xs mt-1 uppercase tracking-wide">{ex.muscle}</p>
-                  </div>
-                  <p className="text-[#555] text-sm tabular-nums ml-6 shrink-0 font-mono">
-                    {ex.sets}×{ex.reps}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Start button */}
-          <div className="pt-8 pb-12">
-            <button
-              onClick={startWorkout}
-              disabled={starting}
-              className="w-full py-5 rounded-2xl text-black font-black text-lg uppercase tracking-wider disabled:opacity-50 transition-opacity"
-              style={{ background: color }}>
-              {starting ? "…" : `Commencer`}
-            </button>
-          </div>
-
+        {/* Start button */}
+        <div style={{ paddingTop: 32, paddingBottom: 48 }}>
+          <button onClick={startWorkout} disabled={starting}
+            style={{
+              width: "100%", padding: "20px 0", borderRadius: 18, border: "none",
+              background: color, color: "#fff",
+              fontSize: 16, fontWeight: 800, letterSpacing: "0.04em",
+              textTransform: "uppercase", cursor: starting ? "wait" : "pointer",
+              opacity: starting ? 0.7 : 1, transition: "opacity 0.2s",
+            }}>
+            {starting ? "Démarrage…" : "Commencer"}
+          </button>
         </div>
       </div>
     </div>
