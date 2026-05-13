@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
-  PROGRAM, DAY_LABEL, getTodayType, localDate,
+  PROGRAM, DAY_LABEL, WEEKLY_SCHEDULE, getTodayType, localDate,
   computeStreak, getMissedDays, Exercise,
 } from "@/lib/program";
 import { TopNav } from "@/components/BottomNav";
@@ -450,7 +450,7 @@ export default function HomePage() {
         </div>
 
         {/* Start button */}
-        <div style={{ paddingTop: 32, paddingBottom: 48 }}>
+        <div style={{ paddingTop: 32, paddingBottom: 40 }}>
           <button onClick={startWorkout} disabled={starting}
             style={{
               width: "100%", padding: "20px 0", borderRadius: 18, border: "none",
@@ -461,6 +461,47 @@ export default function HomePage() {
             }}>
             {starting ? "Démarrage…" : "Commencer"}
           </button>
+        </div>
+
+        {/* Weekly program overview */}
+        <div style={{ borderTop: "1px solid #1a1a2e", paddingTop: 28, paddingBottom: 48 }}>
+          <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 16 }}>
+            Programme de la semaine
+          </p>
+          {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
+            const dt = WEEKLY_SCHEDULE[dow];
+            const info = DAY_LABEL[dt];
+            const isToday = new Date().getDay() === dow;
+            const DAY_NAMES: Record<number, string> = { 0: "Dim", 1: "Lun", 2: "Mar", 3: "Mer", 4: "Jeu", 5: "Ven", 6: "Sam" };
+            const exNames = PROGRAM[dt].map((e) => e.muscle).filter((v, i, a) => a.indexOf(v) === i).slice(0, 3).join(" · ");
+            return (
+              <div key={dow} style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: "11px 0",
+                borderBottom: dow !== 0 ? "1px solid #1a1a2e" : "none",
+                background: isToday ? info.color + "0a" : "transparent",
+                marginLeft: isToday ? -8 : 0,
+                paddingLeft: isToday ? 8 : 0,
+                borderRadius: isToday ? 8 : 0,
+                transition: "all 0.2s",
+              }}>
+                <span style={{
+                  fontSize: 12, fontWeight: isToday ? 700 : 500,
+                  color: isToday ? "#fff" : "#374151",
+                  width: 28, flexShrink: 0,
+                }}>
+                  {DAY_NAMES[dow]}
+                </span>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: info.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 14, fontWeight: isToday ? 700 : 500, color: isToday ? "#fff" : "#9ca3af", flex: 1 }}>
+                  {info.label}
+                </span>
+                <span style={{ fontSize: 11, color: "#374151", textAlign: "right" }}>
+                  {exNames}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
