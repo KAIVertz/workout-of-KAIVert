@@ -94,7 +94,7 @@ export function BodyMap({ value, onChange, readonly }: Props) {
       <svg
         ref={svgRef}
         viewBox="0 0 200 370"
-        style={{ width: "min(85vw, 340px)", height: "auto", userSelect: "none", touchAction: "none" }}
+        style={{ width: "auto", height: "min(62vh, 420px)", userSelect: "none", touchAction: "none" }}
         onPointerDown={(e) => {
           painting.current = true;
           lastHit.current = null;
