@@ -28,6 +28,25 @@ export async function POST() {
     await sql`
       CREATE UNIQUE INDEX IF NOT EXISTS uq_exercise_logs
       ON exercise_logs (session_id, exercise_name, set_number)`;
+
+    await sql`CREATE TABLE IF NOT EXISTS daily_checkins (
+      id            SERIAL PRIMARY KEY,
+      date          TEXT NOT NULL UNIQUE,
+      energy        INTEGER CHECK (energy BETWEEN 1 AND 5),
+      sleep_hours   NUMERIC,
+      sleep_quality INTEGER CHECK (sleep_quality BETWEEN 1 AND 5),
+      mood          TEXT,
+      notes         TEXT,
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    )`;
+
+    await sql`CREATE TABLE IF NOT EXISTS pain_logs (
+      id          SERIAL PRIMARY KEY,
+      checkin_id  INTEGER REFERENCES daily_checkins(id) ON DELETE CASCADE,
+      zone        TEXT NOT NULL,
+      intensity   INTEGER CHECK (intensity BETWEEN 1 AND 3)
+    )`;
+
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("init error", e);

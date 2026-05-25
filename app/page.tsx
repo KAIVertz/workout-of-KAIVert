@@ -6,6 +6,7 @@ import {
   computeStreak, getMissedDays, Exercise,
 } from "@/lib/program";
 import { TopNav } from "@/components/BottomNav";
+import { CheckinModal } from "@/components/CheckinModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Session {
@@ -35,6 +36,44 @@ function parseReps(r: string): number {
 }
 
 // ─── Exercise Card ────────────────────────────────────────────────────────────
+function RestTimer({ onDone }: { onDone: () => void }) {
+  const [secs, setSecs] = useState(60);
+  const ref = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    ref.current = setInterval(() => {
+      setSecs((s) => {
+        if (s <= 1) {
+          clearInterval(ref.current!);
+          navigator.vibrate?.([200, 100, 200]);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => { if (ref.current) clearInterval(ref.current); };
+  }, []);
+
+  const pct = ((60 - secs) / 60) * 100;
+
+  return (
+    <div style={{ marginTop: 12, padding: "10px 14px", background: "#10101a", borderRadius: 12, border: "1px solid #1a1a2e", display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <span style={{ fontSize: 12, color: "#6b7280" }}>Repos</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: secs === 0 ? "#0041C2" : "#fff", fontVariantNumeric: "tabular-nums" }}>
+            {secs === 0 ? "Go !" : `${secs}s`}
+          </span>
+        </div>
+        <div style={{ height: 3, background: "#1a1a2e", borderRadius: 2 }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: "#0041C2", borderRadius: 2, transition: "width 1s linear" }} />
+        </div>
+      </div>
+      <button onClick={onDone} style={{ background: "none", border: "none", color: "#374151", fontSize: 18, cursor: "pointer", padding: "0 4px" }}>×</button>
+    </div>
+  );
+}
+
 function ExerciseCard({
   ex, sessionId, logs, prevLogs, onLogsUpdate, accent,
 }: {
@@ -46,6 +85,7 @@ function ExerciseCard({
   const [busy, setBusy] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
+  const [resting, setResting] = useState(false);
 
   const dw = parseWeight(ex.weight);
   const dr = parseReps(ex.reps);
@@ -93,6 +133,8 @@ function ExerciseCard({
       setError("Erreur réseau — retente");
     }
     setBusy((b) => { const s = new Set(b); s.delete(sn); return s; });
+    // Start rest timer after completing a set (not when removing)
+    if (!existing) setResting(true);
   }
 
   return (
@@ -154,6 +196,8 @@ function ExerciseCard({
               );
             })}
           </div>
+          {/* Rest timer */}
+          {resting && <RestTimer onDone={() => setResting(false)} />}
           {/* Tip */}
           <p style={{ fontSize: 12, color: "#374151", fontStyle: "italic", marginTop: 12, lineHeight: 1.5 }}>
             {ex.tip}
@@ -174,6 +218,7 @@ export default function HomePage() {
   const [starting, setStarting] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [showCheckin, setShowCheckin] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const dayType = getTodayType();
@@ -209,8 +254,11 @@ export default function HomePage() {
     async function init() {
       try {
         await fetch("/api/init", { method: "POST" });
-        const data = await fetchSessions();
         const today = localDate();
+        // Check if check-in done today
+        const ci = await fetch(`/api/checkins?date=${today}`).then((r) => r.json()).catch(() => null);
+        if (!ci) setShowCheckin(true);
+        const data = await fetchSessions();
         const todaySess = data.find((s) => s.date === today && !s.completed);
         if (todaySess) {
           setActive(todaySess);
@@ -373,6 +421,7 @@ export default function HomePage() {
   // ── IDLE ─────────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100svh", background: "#08080d" }}>
+      {showCheckin && <CheckinModal onClose={() => setShowCheckin(false)} />}
       {/* Hero — colored section */}
       <div style={{
         background: `linear-gradient(135deg, ${color}22 0%, ${color}08 100%)`,

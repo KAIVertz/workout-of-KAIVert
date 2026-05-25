@@ -15,18 +15,54 @@ interface Session {
   duration_seconds: number;
 }
 
-const SUGGESTIONS = [
-  "Comment je progresse cette semaine ?",
-  "Adapte le programme pour mes blessures",
-  "Quel volume j'ai fait ce mois-ci ?",
-  "Conseille-moi sur ma nutrition végane",
-];
+const ROLES = [
+  { id: "coach",    emoji: "🏋️", label: "Coach",     hint: "Programme, charges, progression" },
+  { id: "kine",     emoji: "🦴",  label: "Kiné",      hint: "Blessures, mobilité, récup" },
+  { id: "nutrition",emoji: "🥗",  label: "Nutrition", hint: "Repas végans, protéines" },
+  { id: "mental",   emoji: "🧠",  label: "Mental",    hint: "Motivation, focus, routine" },
+] as const;
+type RoleId = typeof ROLES[number]["id"];
+
+const ROLE_PROMPTS: Record<RoleId, string> = {
+  coach: "",
+  kine: "Tu es maintenant en mode KINÉ. Spécialise-toi sur les blessures, la mobilité, les douleurs musculaires, les protocoles de récupération et les exercices de renforcement préventif. Adapte toujours à l'état physique actuel de KAI.",
+  nutrition: "Tu es maintenant en mode NUTRITIONNISTE VÉGAN. Spécialise-toi sur la nutrition végane pour la performance sportive : sources de protéines végétales, timing des repas autour de l'entraînement, suppléments éventuels (B12, créatine, etc.), et recettes simples adaptées à un ado de 15 ans.",
+  mental: "Tu es maintenant en mode PRÉPARATEUR MENTAL. Spécialise-toi sur la motivation, la routine de préparation avant séance, la gestion des échecs et des coups de mou, la visualisation et la confiance en soi pour performer.",
+};
+
+const SUGGESTIONS: Record<RoleId, string[]> = {
+  coach: [
+    "Comment je progresse cette semaine ?",
+    "Adapte le programme pour mes blessures",
+    "Quel volume j'ai fait ce mois-ci ?",
+    "Quelle charge mettre aujourd'hui ?",
+  ],
+  kine: [
+    "Mon hématome cuisse gauche — que faire ?",
+    "Exercices de mobilité pour le genou droit",
+    "Combien de temps pour que mon genou guérisse ?",
+    "Étirements après séance ?",
+  ],
+  nutrition: [
+    "Combien de protéines je dois manger par jour ?",
+    "Que manger avant/après ma séance ?",
+    "Meilleures sources de protéines véganes",
+    "Est-ce que je dois prendre des suppléments ?",
+  ],
+  mental: [
+    "Je suis démotivé, aide-moi",
+    "Routine de préparation avant séance",
+    "Comment gérer les jours où j'ai pas envie ?",
+    "Visualisation pré-entraînement",
+  ],
+};
 
 export default function CoachPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [role, setRole] = useState<RoleId>("coach");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,9 +90,9 @@ export default function CoachPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: userMsg,
+          message: ROLE_PROMPTS[role] ? `[${role.toUpperCase()}] ${userMsg}` : userMsg,
           history: messages,
-          context: { sessions },
+          context: { sessions, role, rolePrompt: ROLE_PROMPTS[role] },
         }),
       });
 
@@ -103,9 +139,26 @@ export default function CoachPage() {
           <h1 style={{ fontSize: 28, fontWeight: 900, color: "#fff", margin: 0 }}>
             KAI Coach
           </h1>
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            IA entraînement · Analyse · Adaptation
-          </p>
+          {/* Role selector */}
+          <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+            {ROLES.map((r) => (
+              <button
+                key={r.id}
+                onClick={() => { setRole(r.id); setMessages([]); }}
+                style={{
+                  padding: "6px 14px", borderRadius: 20,
+                  border: role === r.id ? "2px solid #0041C2" : "1px solid #1a1a2e",
+                  background: role === r.id ? "#0041C222" : "#10101a",
+                  color: role === r.id ? "#fff" : "#6b7280",
+                  fontSize: 13, fontWeight: role === r.id ? 700 : 400,
+                  cursor: "pointer", transition: "all 0.15s",
+                  display: "flex", alignItems: "center", gap: 6,
+                }}
+              >
+                <span>{r.emoji}</span> {r.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -126,7 +179,7 @@ export default function CoachPage() {
               Accès à {sessions.length} séances · Connaissance du programme
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {SUGGESTIONS.map((s) => (
+              {SUGGESTIONS[role].map((s) => (
                 <button
                   key={s}
                   onClick={() => send(s)}

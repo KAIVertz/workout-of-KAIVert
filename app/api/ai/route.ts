@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const { message, history, context } = (await req.json()) as {
       message: string;
       history: Message[];
-      context: { sessions: Session[] };
+      context: { sessions: Session[]; rolePrompt?: string };
     };
 
     const sessionSummary = context?.sessions?.length
@@ -68,11 +68,14 @@ export async function POST(req: NextRequest) {
           .join("\n")
       : "";
 
+    const systemContent = SYSTEM_PROMPT + sessionSummary +
+      (context?.rolePrompt ? `\n\n${context.rolePrompt}` : "");
+
     const stream = await getClient().chat.completions.create({
       model: "llama-3.3-70b-versatile",
       max_tokens: 1024,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT + sessionSummary },
+        { role: "system", content: systemContent },
         ...history.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: message },
       ],
