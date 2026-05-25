@@ -9,6 +9,7 @@ import { CheckinModal } from "@/components/CheckinModal";
 import { HomeView } from "@/components/HomeView";
 import { CoachView } from "@/components/CoachView";
 import { HistoryView } from "@/components/HistoryView";
+import { StatsView } from "@/components/StatsView";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Session {
@@ -175,7 +176,7 @@ function ExerciseCard({
 }
 
 // ─── Tab Bar ──────────────────────────────────────────────────────────────────
-const TAB_LABELS = ["Aujourd'hui", "Coach", "Historique"];
+const TAB_LABELS = ["Aujourd'hui", "Coach", "Stats", "Historique"];
 
 function TabBar({ page, onChange }: { page: number; onChange: (p: number) => void }) {
   return (
@@ -190,7 +191,7 @@ function TabBar({ page, onChange }: { page: number; onChange: (p: number) => voi
           <button key={i} onClick={() => onChange(i)}
             style={{
               flex: 1, padding: "12px 0 14px", background: "none", border: "none",
-              cursor: "pointer", fontSize: 13, fontWeight: page === i ? 700 : 500,
+              cursor: "pointer", fontSize: 12, fontWeight: page === i ? 700 : 500,
               color: page === i ? "#fff" : "#374151",
               borderBottom: page === i ? "2px solid #0041C2" : "2px solid transparent",
               transition: "color 0.15s, border-color 0.15s",
@@ -199,6 +200,85 @@ function TabBar({ page, onChange }: { page: number; onChange: (p: number) => voi
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Session Summary ──────────────────────────────────────────────────────────
+interface SummaryData { duration: number; setsCompleted: number; totalSets: number; dayType: DayType; }
+
+function SessionSummary({ data, sessions, onClose }: { data: SummaryData; sessions: Session[]; onClose: () => void }) {
+  const [aiMsg, setAiMsg] = useState("");
+  const { label, color } = DAY_LABEL[data.dayType];
+  const pct = data.totalSets > 0 ? Math.round((data.setsCompleted / data.totalSets) * 100) : 0;
+  const mins = Math.floor(data.duration / 60);
+  const secs = data.duration % 60;
+
+  useEffect(() => {
+    const msg = `Séance ${label} terminée : ${data.setsCompleted}/${data.totalSets} séries en ${mins}min${secs > 0 ? `${secs}s` : ""}. Donne-moi un retour bref sur cette séance et un conseil pour la récupération.`;
+    fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg, history: [], context: { sessions: sessions.slice(0, 10) } }),
+    }).then(async res => {
+      if (!res.ok) return;
+      const reader = res.body!.getReader();
+      const dec = new TextDecoder();
+      let text = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        text += dec.decode(value, { stream: true });
+        setAiMsg(text);
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 40, background: "#08080d",
+      display: "flex", flexDirection: "column",
+      paddingTop: "max(56px, calc(env(safe-area-inset-top) + 24px))",
+      paddingLeft: 24, paddingRight: 24,
+      paddingBottom: "max(32px, calc(env(safe-area-inset-bottom) + 16px))",
+    }}>
+      <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 8 }}>
+        Séance terminée
+      </p>
+      <h2 style={{ fontSize: 40, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", marginBottom: 32 }}>{label}</h2>
+
+      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+        <div style={{ flex: 1, background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 18, padding: "18px" }}>
+          <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Durée</p>
+          <p style={{ fontSize: 32, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{mins}<span style={{ fontSize: 16, color: "#6b7280" }}>min</span></p>
+        </div>
+        <div style={{ flex: 1, background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 18, padding: "18px" }}>
+          <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Séries</p>
+          <p style={{ fontSize: 32, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{data.setsCompleted}<span style={{ fontSize: 14, color: "#6b7280" }}>/{data.totalSets}</span></p>
+        </div>
+        <div style={{ flex: 1, background: "#10101a", border: `1px solid ${color}44`, borderRadius: 18, padding: "18px" }}>
+          <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>Complétion</p>
+          <p style={{ fontSize: 32, fontWeight: 900, color: pct === 100 ? "#fff" : color, lineHeight: 1 }}>{pct}<span style={{ fontSize: 14, color: "#6b7280" }}>%</span></p>
+        </div>
+      </div>
+
+      {aiMsg ? (
+        <div style={{ background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 18, padding: "18px 20px", flex: 1 }}>
+          <p style={{ fontSize: 11, color: "#0041C2", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>
+            Analyse du coach
+          </p>
+          <p style={{ fontSize: 15, color: "#fff", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{aiMsg}</p>
+        </div>
+      ) : (
+        <div style={{ background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 18, padding: "18px 20px", flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <p style={{ fontSize: 13, color: "#374151" }}>Analyse en cours…</p>
+        </div>
+      )}
+
+      <button onClick={onClose}
+        style={{ marginTop: 20, padding: "18px 0", borderRadius: 16, border: "none", background: color, color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+        Fermer
+      </button>
     </div>
   );
 }
@@ -215,6 +295,8 @@ export default function HomePage() {
   const [confirmFinish, setConfirmFinish] = useState(false);
   const [showCheckin, setShowCheckin] = useState(false);
   const [page, setPage] = useState(0);
+  const [formScore, setFormScore] = useState<number | null>(null);
+  const [summary, setSummary] = useState<SummaryData | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const dayType = getTodayType();
@@ -252,6 +334,18 @@ export default function HomePage() {
       try {
         await fetch("/api/init", { method: "POST" });
         const today = localDate();
+
+        // Auto check-in if not done today (only between 5h-13h)
+        const hour = new Date().getHours();
+        if (hour >= 5 && hour < 13) {
+          const ci = await fetch(`/api/checkins?date=${today}`).then(r => r.json()).catch(() => null);
+          if (!ci || ci.error) setShowCheckin(true);
+          else if (ci.energy && ci.sleep_quality && ci.mood) {
+            const score = Math.round(((Number(ci.energy) + Number(ci.sleep_quality) + Number(ci.mood)) / 3) * 20);
+            setFormScore(score);
+          }
+        }
+
         const data = await fetchSessions();
         const todaySess = data.find(s => s.date === today && !s.completed);
         if (todaySess) {
@@ -300,6 +394,7 @@ export default function HomePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ completed: true, duration_seconds: elapsed }),
     });
+    setSummary({ duration: elapsed, setsCompleted: doneSets, totalSets, dayType });
     setActive(null); setLogs([]); setPrevLogs([]); setConfirmFinish(false);
     fetchSessions();
   }
@@ -404,18 +499,22 @@ export default function HomePage() {
   // ── TAB CONTAINER ────────────────────────────────────────────────────────────
   return (
     <div style={{ height: "100svh", display: "flex", flexDirection: "column", background: "#08080d" }}>
-      {showCheckin && <CheckinModal onClose={() => setShowCheckin(false)} />}
+      {showCheckin && <CheckinModal onClose={() => { setShowCheckin(false); fetch(`/api/checkins?date=${localDate()}`).then(r => r.json()).then(ci => { if (ci?.energy) setFormScore(Math.round(((Number(ci.energy) + Number(ci.sleep_quality) + Number(ci.mood)) / 3) * 20)); }).catch(() => {}); }} />}
+      {summary && <SessionSummary data={summary} sessions={sessions} onClose={() => setSummary(null)} />}
 
       <TabBar page={page} onChange={setPage} />
 
       <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
         <div style={{ display: page === 0 ? "flex" : "none", flexDirection: "column", height: "100%" }}>
-          <HomeView sessions={sessions} onStart={startWorkout} starting={starting} onCheckin={() => setShowCheckin(true)} dayType={dayType} />
+          <HomeView sessions={sessions} onStart={startWorkout} starting={starting} onCheckin={() => setShowCheckin(true)} dayType={dayType} formScore={formScore} />
         </div>
         <div style={{ display: page === 1 ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <CoachView sessions={sessions} />
         </div>
         <div style={{ display: page === 2 ? "flex" : "none", flexDirection: "column", height: "100%" }}>
+          <StatsView sessions={sessions} />
+        </div>
+        <div style={{ display: page === 3 ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <HistoryView sessions={sessions} />
         </div>
       </div>

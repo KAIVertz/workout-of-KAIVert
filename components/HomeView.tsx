@@ -9,6 +9,7 @@ interface Props {
   starting: boolean;
   onCheckin: () => void;
   dayType: DayType;
+  formScore: number | null;
 }
 
 function ProgressRing({ done, total, color }: { done: number; total: number; color: string }) {
@@ -28,7 +29,7 @@ function ProgressRing({ done, total, color }: { done: number; total: number; col
   );
 }
 
-export function HomeView({ sessions, onStart, starting, onCheckin, dayType }: Props) {
+export function HomeView({ sessions, onStart, starting, onCheckin, dayType, formScore }: Props) {
   const { label, sub, color } = DAY_LABEL[dayType];
   const exercises = PROGRAM[dayType];
   const streak = computeStreak(sessions);
@@ -94,16 +95,31 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType }: Pr
             </div>
           </div>
 
-          {/* Streak card */}
-          <div style={{
-            width: 96, background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 20,
-            display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
-            padding: "18px 12px",
-          }}>
-            <p style={{ fontSize: 40, fontWeight: 900, color: streak > 0 ? "#fff" : "#1a1a2e", lineHeight: 1, letterSpacing: "-0.03em" }}>{streak}</p>
-            <p style={{ fontSize: 10, color: "#374151", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 6 }}>
-              {streak === 1 ? "jour" : "jours"}
-            </p>
+          {/* Streak + form score */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, width: 96 }}>
+            <div style={{
+              background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 20,
+              display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
+              padding: "14px 12px",
+            }}>
+              <p style={{ fontSize: 34, fontWeight: 900, color: streak > 0 ? "#fff" : "#1a1a2e", lineHeight: 1, letterSpacing: "-0.03em" }}>{streak}</p>
+              <p style={{ fontSize: 10, color: "#374151", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>
+                {streak === 1 ? "jour" : "jours"}
+              </p>
+            </div>
+            {formScore !== null && (
+              <div style={{
+                background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 20,
+                display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
+                padding: "12px",
+              }}>
+                <p style={{
+                  fontSize: 28, fontWeight: 900, lineHeight: 1, letterSpacing: "-0.03em",
+                  color: formScore >= 70 ? "#059669" : formScore >= 45 ? "#D97706" : "#DC2626",
+                }}>{formScore}</p>
+                <p style={{ fontSize: 9, color: "#374151", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>Forme</p>
+              </div>
+            )}
           </div>
         </div>
 
