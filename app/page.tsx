@@ -255,9 +255,9 @@ export default function HomePage() {
       try {
         await fetch("/api/init", { method: "POST" });
         const today = localDate();
-        // Check if check-in done today
-        const ci = await fetch(`/api/checkins?date=${today}`).then((r) => r.json()).catch(() => null);
-        if (!ci) setShowCheckin(true);
+        // Check-in auto-disabled during testing — re-enable when ready
+        // const ci = await fetch(`/api/checkins?date=${today}`).then((r) => r.json()).catch(() => null);
+        // if (!ci) setShowCheckin(true);
         const data = await fetchSessions();
         const todaySess = data.find((s) => s.date === today && !s.completed);
         if (todaySess) {
