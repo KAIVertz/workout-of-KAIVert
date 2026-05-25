@@ -1,4 +1,4 @@
-const CACHE = "kaivert-v1";
+const CACHE = "kaivert-v2";
 const PRECACHE = ["/", "/history", "/coach"];
 
 self.addEventListener("install", (e) => {
