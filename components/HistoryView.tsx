@@ -39,7 +39,7 @@ export function HistoryView({ sessions }: { sessions: Session[] }) {
     <div style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
       <div style={{
         maxWidth: 480, margin: "0 auto",
-        padding: "max(52px, calc(env(safe-area-inset-top) + 20px)) 20px max(88px, calc(env(safe-area-inset-bottom) + 76px))",
+        padding: "20px 20px max(32px, calc(env(safe-area-inset-bottom) + 20px))",
       }}>
         {/* Header */}
         <div style={{ marginBottom: 24 }}>

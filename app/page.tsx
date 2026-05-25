@@ -174,28 +174,29 @@ function ExerciseCard({
   );
 }
 
-// ─── Page Dots ────────────────────────────────────────────────────────────────
-const PAGE_LABELS = ["Aujourd'hui", "Coach", "Historique"];
+// ─── Tab Bar ──────────────────────────────────────────────────────────────────
+const TAB_LABELS = ["Aujourd'hui", "Coach", "Historique"];
 
-function PageDots({ page, onChange }: { page: number; onChange: (p: number) => void }) {
+function TabBar({ page, onChange }: { page: number; onChange: (p: number) => void }) {
   return (
     <div style={{
-      position: "fixed",
-      bottom: "max(20px, calc(env(safe-area-inset-bottom) + 12px))",
-      left: 0, right: 0, zIndex: 30,
-      display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+      flexShrink: 0,
+      paddingTop: "max(14px, calc(env(safe-area-inset-top) + 6px))",
+      background: "#08080d",
+      borderBottom: "1px solid #1a1a2e",
     }}>
-      <p style={{ fontSize: 11, color: "#374151", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.12em" }}>
-        {PAGE_LABELS[page]}
-      </p>
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        {[0, 1, 2].map(i => (
+      <div style={{ display: "flex", maxWidth: 480, margin: "0 auto" }}>
+        {TAB_LABELS.map((label, i) => (
           <button key={i} onClick={() => onChange(i)}
             style={{
-              width: i === page ? 22 : 6, height: 6, borderRadius: 3, border: "none",
-              background: i === page ? "#0041C2" : "#1a1a2e",
-              cursor: "pointer", padding: 0, transition: "all 0.2s cubic-bezier(0.4,0,0.2,1)",
-            }} />
+              flex: 1, padding: "12px 0 14px", background: "none", border: "none",
+              cursor: "pointer", fontSize: 13, fontWeight: page === i ? 700 : 500,
+              color: page === i ? "#fff" : "#374151",
+              borderBottom: page === i ? "2px solid #0041C2" : "2px solid transparent",
+              transition: "color 0.15s, border-color 0.15s",
+            }}>
+            {label}
+          </button>
         ))}
       </div>
     </div>
@@ -215,7 +216,6 @@ export default function HomePage() {
   const [showCheckin, setShowCheckin] = useState(false);
   const [page, setPage] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const swipeRef = useRef<HTMLDivElement>(null);
 
   const dayType = getTodayType();
   const { color } = DAY_LABEL[dayType];
@@ -230,50 +230,6 @@ export default function HomePage() {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Swipe gesture handling
-  useEffect(() => {
-    const el = swipeRef.current;
-    if (!el) return;
-
-    let startX = 0;
-    let startY = 0;
-    let direction: "h" | "v" | null = null;
-
-    function onTouchStart(e: TouchEvent) {
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      direction = null;
-    }
-
-    function onTouchMove(e: TouchEvent) {
-      if (direction === "v") return;
-      const dx = e.touches[0].clientX - startX;
-      const dy = e.touches[0].clientY - startY;
-      if (direction === null) {
-        if (Math.abs(dx) > 6 && Math.abs(dx) > Math.abs(dy)) direction = "h";
-        else if (Math.abs(dy) > 6) { direction = "v"; return; }
-        else return;
-      }
-      if (direction === "h") e.preventDefault();
-    }
-
-    function onTouchEnd(e: TouchEvent) {
-      if (direction !== "h") return;
-      const dx = e.changedTouches[0].clientX - startX;
-      if (dx < -60) setPage(p => Math.min(2, p + 1));
-      else if (dx > 60) setPage(p => Math.max(0, p - 1));
-      direction = null;
-    }
-
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-    };
-  }, []);
 
   const fetchSessions = useCallback(async () => {
     const r = await fetch("/api/sessions");
@@ -445,47 +401,24 @@ export default function HomePage() {
     );
   }
 
-  // ── SWIPE CONTAINER ──────────────────────────────────────────────────────────
+  // ── TAB CONTAINER ────────────────────────────────────────────────────────────
   return (
-    <div style={{ height: "100svh", background: "#08080d", overflow: "hidden", position: "relative" }}>
+    <div style={{ height: "100svh", display: "flex", flexDirection: "column", background: "#08080d" }}>
       {showCheckin && <CheckinModal onClose={() => setShowCheckin(false)} />}
 
-      {/* Three pages */}
-      <div
-        ref={swipeRef}
-        style={{
-          display: "flex",
-          width: "300%",
-          height: "100%",
-          transform: `translateX(${-page * (100 / 3)}%)`,
-          transition: "transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)",
-          willChange: "transform",
-        }}
-      >
-        {/* Page 0 — Home */}
-        <div style={{ width: "33.333%", height: "100%", overflow: "hidden" }}>
-          <HomeView
-            sessions={sessions}
-            onStart={startWorkout}
-            starting={starting}
-            onCheckin={() => setShowCheckin(true)}
-            dayType={dayType}
-          />
-        </div>
+      <TabBar page={page} onChange={setPage} />
 
-        {/* Page 1 — Coach */}
-        <div style={{ width: "33.333%", height: "100%", overflow: "hidden" }}>
+      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        <div style={{ display: page === 0 ? "flex" : "none", flexDirection: "column", height: "100%" }}>
+          <HomeView sessions={sessions} onStart={startWorkout} starting={starting} onCheckin={() => setShowCheckin(true)} dayType={dayType} />
+        </div>
+        <div style={{ display: page === 1 ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <CoachView sessions={sessions} />
         </div>
-
-        {/* Page 2 — History */}
-        <div style={{ width: "33.333%", height: "100%", overflow: "hidden" }}>
+        <div style={{ display: page === 2 ? "flex" : "none", flexDirection: "column", height: "100%" }}>
           <HistoryView sessions={sessions} />
         </div>
       </div>
-
-      {/* Page dots */}
-      <PageDots page={page} onChange={setPage} />
     </div>
   );
 }

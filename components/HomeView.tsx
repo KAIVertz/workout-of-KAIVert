@@ -64,20 +64,14 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType }: Pr
     <div style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
       <div style={{
         maxWidth: 480, margin: "0 auto",
-        padding: "max(52px, calc(env(safe-area-inset-top) + 20px)) 20px max(88px, calc(env(safe-area-inset-bottom) + 76px))",
+        padding: "20px 20px max(32px, calc(env(safe-area-inset-bottom) + 20px))",
       }}>
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
-          <div>
-            <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.14em", marginBottom: 4 }}>
-              {dateLabel}
-            </p>
-            <h1 style={{ fontSize: 30, fontWeight: 900, color: "#fff", letterSpacing: "-0.03em", lineHeight: 1 }}>KAI</h1>
-          </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <p style={{ fontSize: 12, color: "#374151", textTransform: "capitalize" }}>{dateLabel}</p>
           <button onClick={onCheckin} style={{
-            background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 12,
-            padding: "9px 14px", color: "#6b7280", fontSize: 12, cursor: "pointer",
-            fontWeight: 500, marginTop: 2,
+            background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 10,
+            padding: "7px 12px", color: "#6b7280", fontSize: 12, cursor: "pointer",
           }}>
             Check-in
           </button>
