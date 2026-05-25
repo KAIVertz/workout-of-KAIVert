@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/",        label: "Aujourd'hui" },
   { href: "/history", label: "Historique"  },
+  { href: "/coach",   label: "Coach"       },
 ];
 
 export function TopNav({ inverted = false }: { inverted?: boolean }) {
