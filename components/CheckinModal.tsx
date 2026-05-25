@@ -225,10 +225,7 @@ export function CheckinModal({ onClose }: { onClose: () => void }) {
             />
           </div>
         ) : (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16, alignSelf: "flex-start" }}>
-              Glisse sur le corps pour marquer les douleurs
-            </p>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
             <BodyMap value={data.painZones} onChange={(v) => setData((d) => ({ ...d, painZones: v }))} />
           </div>
         )}
