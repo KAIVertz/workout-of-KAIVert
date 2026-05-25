@@ -500,8 +500,16 @@ export default function HomePage() {
           ))}
         </div>
 
+        {/* Check-in preview button */}
+        <div style={{ paddingTop: 20 }}>
+          <button onClick={() => setShowCheckin(true)}
+            style={{ background: "none", border: "1px solid #1a1a2e", borderRadius: 12, padding: "10px 16px", color: "#374151", fontSize: 13, cursor: "pointer", width: "100%" }}>
+            Check-in matin — aperçu
+          </button>
+        </div>
+
         {/* Start button */}
-        <div style={{ paddingTop: 32, paddingBottom: 40 }}>
+        <div style={{ paddingTop: 16, paddingBottom: 40 }}>
           <button onClick={startWorkout} disabled={starting}
             style={{
               width: "100%", padding: "20px 0", borderRadius: 18, border: "none",
