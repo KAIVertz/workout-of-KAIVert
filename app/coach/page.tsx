@@ -133,7 +133,7 @@ export default function CoachPage() {
       }}
     >
       {/* Header */}
-      <div style={{ padding: "20px 20px 0" }}>
+      <div style={{ paddingTop: "max(20px, calc(env(safe-area-inset-top) + 8px))", paddingLeft: 20, paddingRight: 20, paddingBottom: 0 }}>
         <TopNav />
         <div style={{ marginTop: 24, marginBottom: 8 }}>
           <h1 style={{ fontSize: 28, fontWeight: 900, color: "#fff", margin: 0 }}>

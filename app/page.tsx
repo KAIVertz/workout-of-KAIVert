@@ -341,7 +341,8 @@ export default function HomePage() {
         <div style={{
           position: "sticky", top: 0, zIndex: 20,
           background: "#08080d", borderBottom: "1px solid #1a1a2e",
-          padding: "48px 20px 16px",
+          paddingTop: "max(48px, calc(env(safe-area-inset-top) + 16px))",
+          paddingLeft: 20, paddingRight: 20, paddingBottom: 16,
         }}>
           <div style={{ maxWidth: 480, margin: "0 auto" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -426,7 +427,8 @@ export default function HomePage() {
       <div style={{
         background: `linear-gradient(135deg, ${color}22 0%, ${color}08 100%)`,
         borderBottom: `1px solid ${color}20`,
-        padding: "48px 20px 32px",
+        paddingTop: "max(48px, calc(env(safe-area-inset-top) + 16px))",
+        paddingLeft: 20, paddingRight: 20, paddingBottom: 32,
       }}>
         <div style={{ maxWidth: 480, margin: "0 auto" }}>
           <TopNav inverted />

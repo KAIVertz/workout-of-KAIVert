@@ -96,9 +96,12 @@ export function CheckinModal({ onClose }: { onClose: () => void }) {
     <div
       style={{
         position: "fixed", inset: 0, zIndex: 50,
-        background: "rgba(8,8,13,0.95)",
+        background: "#08080d",
         display: "flex", flexDirection: "column",
-        padding: "48px 24px 32px",
+        paddingTop: "max(56px, calc(env(safe-area-inset-top) + 24px))",
+        paddingLeft: 24, paddingRight: 24,
+        paddingBottom: "max(32px, calc(env(safe-area-inset-bottom) + 16px))",
+        overflowY: "auto",
       }}
     >
       {/* Header */}

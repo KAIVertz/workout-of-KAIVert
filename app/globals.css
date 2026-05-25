@@ -9,3 +9,8 @@ body {
   -webkit-font-smoothing: antialiased;
   min-height: 100svh;
 }
+
+/* Safe area padding for all pages */
+.page-safe {
+  padding-top: max(48px, calc(env(safe-area-inset-top) + 16px));
+}
