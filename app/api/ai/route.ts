@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { PROGRAM, DAY_LABEL, WEEKLY_SCHEDULE, DayType } from "@/lib/program";
 
-const client = new Anthropic();
+function getClient() {
+  return new Groq({ apiKey: process.env.GROQ_API_KEY ?? "" });
+}
 
 const DAY_NAMES = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 
@@ -18,7 +20,8 @@ Profil :
   * Programme adapté : mercredi (Bras+) et samedi (Chest+) remplacent les jours jambes.
 
 Programme 7 jours :
-` + Object.entries(WEEKLY_SCHEDULE)
+` +
+  Object.entries(WEEKLY_SCHEDULE)
     .map(([day, type]) => {
       const exercises = PROGRAM[type as DayType].map((e) => e.name).join(", ");
       return `${DAY_NAMES[Number(day)]} — ${DAY_LABEL[type as DayType].label} : ${exercises}`;
@@ -49,7 +52,7 @@ interface Message {
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, history, context } = await req.json() as {
+    const { message, history, context } = (await req.json()) as {
       message: string;
       history: Message[];
       context: { sessions: Session[] };
@@ -65,11 +68,11 @@ export async function POST(req: NextRequest) {
           .join("\n")
       : "";
 
-    const stream = await client.messages.create({
-      model: "claude-sonnet-4-6",
+    const stream = await getClient().chat.completions.create({
+      model: "llama-3.3-70b-versatile",
       max_tokens: 1024,
-      system: SYSTEM_PROMPT + sessionSummary,
       messages: [
+        { role: "system", content: SYSTEM_PROMPT + sessionSummary },
         ...history.map((m) => ({ role: m.role, content: m.content })),
         { role: "user", content: message },
       ],
@@ -80,12 +83,8 @@ export async function POST(req: NextRequest) {
     const readable = new ReadableStream({
       async start(controller) {
         for await (const chunk of stream) {
-          if (
-            chunk.type === "content_block_delta" &&
-            chunk.delta.type === "text_delta"
-          ) {
-            controller.enqueue(encoder.encode(chunk.delta.text));
-          }
+          const text = chunk.choices[0]?.delta?.content ?? "";
+          if (text) controller.enqueue(encoder.encode(text));
         }
         controller.close();
       },
