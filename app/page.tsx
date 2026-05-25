@@ -68,17 +68,22 @@ function RestTimer({ onDone }: { onDone: () => void }) {
 
 // ─── Exercise Card ────────────────────────────────────────────────────────────
 function ExerciseCard({
-  ex, sessionId, logs, prevLogs, onLogsUpdate, accent,
+  ex, sessionId, logs, prevLogs, onLogsUpdate, accent, focused, onFocus,
 }: {
   ex: Exercise; sessionId: number;
   logs: Log[]; prevLogs: Log[];
   onLogsUpdate: (l: Log[]) => void;
   accent: string;
+  focused?: boolean;
+  onFocus?: () => void;
 }) {
   const [busy, setBusy] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
   const [resting, setResting] = useState(false);
+
+  // Auto-open when focused from lock screen navigation
+  useEffect(() => { if (focused) setOpen(true); }, [focused]);
 
   const dw = parseWeight(ex.weight);
   const dr = parseReps(ex.reps);
@@ -121,8 +126,14 @@ function ExerciseCard({
   }
 
   return (
-    <div style={{ borderBottom: "1px solid #1a1a2e", opacity: allDone ? 0.45 : 1, transition: "opacity 0.3s" }}>
-      <button onClick={() => setOpen(o => !o)}
+    <div style={{
+      borderBottom: "1px solid #1a1a2e",
+      opacity: allDone ? 0.45 : 1,
+      transition: "opacity 0.3s",
+      borderLeft: focused && !allDone ? `3px solid ${accent}` : "3px solid transparent",
+      paddingLeft: focused && !allDone ? 12 : 0,
+    }}>
+      <button onClick={() => { setOpen(o => !o); onFocus?.(); }}
         style={{ width: "100%", textAlign: "left", padding: "16px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -297,7 +308,10 @@ export default function HomePage() {
   const [page, setPage] = useState(0);
   const [formScore, setFormScore] = useState<number | null>(null);
   const [summary, setSummary] = useState<SummaryData | null>(null);
+  const [focusedExIdx, setFocusedExIdx] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cardRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const dayType = getTodayType();
   const { color } = DAY_LABEL[dayType];
@@ -311,6 +325,75 @@ export default function HomePage() {
     timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [active?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-advance to next incomplete exercise when current is fully done
+  useEffect(() => {
+    if (!active) return;
+    const ex = exercises[focusedExIdx];
+    if (!ex) return;
+    const exDone = Array.from({ length: ex.sets }, (_, i) => i + 1)
+      .every(s => logs.some(l => l.exercise_name === ex.name && l.set_number === s));
+    if (exDone && focusedExIdx < exercises.length - 1) {
+      const t = setTimeout(() => {
+        setFocusedExIdx(i => {
+          const next = i + 1;
+          cardRefs.current[next]?.scrollIntoView({ behavior: "smooth", block: "start" });
+          return next;
+        });
+      }, 600);
+      return () => clearTimeout(t);
+    }
+  }, [logs, focusedExIdx]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Media Session — lock screen display + controls
+  useEffect(() => {
+    if (!active || !("mediaSession" in navigator)) return;
+    const ex = exercises[focusedExIdx];
+    if (!ex) return;
+
+    const exDoneSets = Array.from({ length: ex.sets }, (_, i) => i + 1)
+      .filter(s => logs.some(l => l.exercise_name === ex.name && l.set_number === s)).length;
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: `${ex.name}  ${exDoneSets}/${ex.sets}`,
+      artist: `${ex.muscle}  ·  ${doneSets}/${totalSets} séries`,
+      album: `KAIVert  ·  ${fmt(elapsed)}`,
+    });
+    navigator.mediaSession.playbackState = "playing";
+
+    navigator.mediaSession.setActionHandler("previoustrack", () => {
+      setFocusedExIdx(i => {
+        const prev = Math.max(0, i - 1);
+        cardRefs.current[prev]?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return prev;
+      });
+    });
+    navigator.mediaSession.setActionHandler("nexttrack", () => {
+      setFocusedExIdx(i => {
+        const next = Math.min(exercises.length - 1, i + 1);
+        cardRefs.current[next]?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return next;
+      });
+    });
+    // seek backward = previous exercise (for headphones)
+    navigator.mediaSession.setActionHandler("seekbackward", () => {
+      setFocusedExIdx(i => Math.max(0, i - 1));
+    });
+    navigator.mediaSession.setActionHandler("seekforward", () => {
+      setFocusedExIdx(i => Math.min(exercises.length - 1, i + 1));
+    });
+  }, [active, focusedExIdx, logs, elapsed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cleanup Media Session when workout ends
+  useEffect(() => {
+    if (active) return;
+    if (!("mediaSession" in navigator)) return;
+    navigator.mediaSession.metadata = null;
+    navigator.mediaSession.playbackState = "none";
+    (["previoustrack","nexttrack","seekbackward","seekforward"] as MediaSessionAction[])
+      .forEach(a => { try { navigator.mediaSession.setActionHandler(a, null); } catch {} });
+    try { audioCtxRef.current?.close(); audioCtxRef.current = null; } catch {}
+  }, [active]);
 
 
   const fetchSessions = useCallback(async () => {
@@ -366,6 +449,17 @@ export default function HomePage() {
 
   async function startWorkout() {
     setStarting(true);
+    setFocusedExIdx(0);
+    // Start silent audio from user gesture so iOS shows Media Session on lock screen
+    try {
+      const ctx = new AudioContext();
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.loop = true;
+      const gain = ctx.createGain(); gain.gain.value = 0.001;
+      src.connect(gain); gain.connect(ctx.destination); src.start();
+      audioCtxRef.current = ctx;
+    } catch {}
     try {
       const today = localDate();
       const r = await fetch("/api/sessions", {
@@ -461,10 +555,14 @@ export default function HomePage() {
         </div>
 
         <div style={{ maxWidth: 480, margin: "0 auto", padding: "0 20px 40px" }}>
-          {exercises.map(ex => (
-            <ExerciseCard key={ex.name} ex={ex}
-              sessionId={active.id} logs={logs} prevLogs={prevLogs}
-              onLogsUpdate={setLogs} accent={color} />
+          {exercises.map((ex, i) => (
+            <div key={ex.name} ref={el => { cardRefs.current[i] = el; }}>
+              <ExerciseCard ex={ex}
+                sessionId={active.id} logs={logs} prevLogs={prevLogs}
+                onLogsUpdate={setLogs} accent={color}
+                focused={focusedExIdx === i}
+                onFocus={() => setFocusedExIdx(i)} />
+            </div>
           ))}
           <div style={{ paddingTop: 32 }}>
             {confirmFinish ? (
