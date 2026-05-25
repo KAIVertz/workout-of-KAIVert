@@ -1,4 +1,4 @@
-const CACHE = "kaivert-v3";
+const CACHE = "kaivert-v4";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(self.skipWaiting());
