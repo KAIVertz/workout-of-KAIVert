@@ -1,7 +1,7 @@
 "use client";
-import { DAY_LABEL, PROGRAM, WEEKLY_SCHEDULE, localDate, computeStreak, DayType } from "@/lib/program";
-
-interface Session { id: number; date: string; day_type: string; completed: boolean; duration_seconds?: number; }
+import { useState } from "react";
+import { DAY_LABEL, PROGRAM, localDate, computeStreak, DayType, Exercise } from "@/lib/program";
+import { Session, Override } from "@/lib/types";
 
 interface Props {
   sessions: Session[];
@@ -10,28 +10,68 @@ interface Props {
   onCheckin: () => void;
   dayType: DayType;
   formScore: number | null;
+  overrides: Record<string, Override>;
+  onSaveOverride: (name: string, data: Override) => Promise<void>;
+  onRecovery: () => void;
+  isRestDay: boolean;
+  ariaBrief?: string;
+  stagnantExercises?: string[];
 }
 
-function ProgressRing({ done, total, color }: { done: number; total: number; color: string }) {
-  const R = 34;
-  const circ = 2 * Math.PI * R;
-  const offset = circ * (1 - (total > 0 ? Math.min(done / total, 1) : 0));
+const BG = "#09090b";
+const SURFACE = "#111113";
+const BORDER = "#27272a";
+const MUTED = "#52525b";
+const MUTED2 = "#a1a1aa";
+const ACCENT = "#F97316";
+
+const WEIGHT_PRESETS = ["Poids du corps", "5kg", "7kg", "10kg", "12kg"];
+
+function ExerciseEditRow({ ex, override, onSave, color }: { ex: Exercise; override: Override; onSave: (data: Override) => void; color: string }) {
+  const [sets, setSets] = useState(override.sets ?? ex.sets);
+  const [weight, setWeight] = useState(override.weight ?? ex.weight);
+  const changed = sets !== ex.sets || weight !== ex.weight;
+
   return (
-    <svg width={84} height={84} viewBox="0 0 84 84" style={{ flexShrink: 0 }}>
-      <circle cx="42" cy="42" r={R} fill="none" stroke="#1a1a2e" strokeWidth={7} />
-      <circle cx="42" cy="42" r={R} fill="none" stroke={color} strokeWidth={7}
-        strokeDasharray={circ} strokeDashoffset={offset}
-        strokeLinecap="round" transform="rotate(-90 42 42)"
-        style={{ transition: "stroke-dashoffset 0.8s cubic-bezier(0.4,0,0.2,1)" }} />
-      <text x="42" y="37" textAnchor="middle" fill="#ffffff" fontSize="19" fontWeight="900" fontFamily="system-ui,-apple-system,sans-serif">{done}</text>
-      <text x="42" y="53" textAnchor="middle" fill="#374151" fontSize="11" fontFamily="system-ui,-apple-system,sans-serif">/{total}</text>
-    </svg>
+    <div style={{ padding: "12px 0", borderBottom: `1px solid ${BG}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <span style={{ fontSize: 13, color: "#e5e7eb", fontWeight: 600 }}>{ex.name}</span>
+        <span style={{ fontSize: 11, color: MUTED }}>{ex.muscle}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <span style={{ fontSize: 11, color: MUTED, width: 56 }}>Séries</span>
+        <button onClick={() => setSets(s => Math.max(1, s - 1))} style={{ width: 32, height: 32, borderRadius: 8, background: BG, border: `1px solid ${BORDER}`, color: MUTED2, fontSize: 18, cursor: "pointer" }}>−</button>
+        <span className="font-racing" style={{ fontSize: 20, color: "#fff", width: 28, textAlign: "center" }}>{sets}</span>
+        <button onClick={() => setSets(s => Math.min(8, s + 1))} style={{ width: 32, height: 32, borderRadius: 8, background: BG, border: `1px solid ${BORDER}`, color: MUTED2, fontSize: 18, cursor: "pointer" }}>+</button>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+        <span style={{ fontSize: 11, color: MUTED, width: 56 }}>Charge</span>
+        {WEIGHT_PRESETS.map(w => (
+          <button key={w} onClick={() => setWeight(w)}
+            style={{ padding: "5px 10px", borderRadius: 8, border: weight === w ? `1.5px solid ${color}` : `1px solid ${BORDER}`, background: weight === w ? `${color}18` : BG, color: weight === w ? "#fff" : MUTED, fontSize: 11, cursor: "pointer" }}>
+            {w}
+          </button>
+        ))}
+      </div>
+      {changed && (
+        <button onClick={() => onSave({ sets, weight })}
+          style={{ marginTop: 10, width: "100%", padding: "9px 0", borderRadius: 10, border: "none", background: color, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+          Enregistrer
+        </button>
+      )}
+    </div>
   );
 }
 
-export function HomeView({ sessions, onStart, starting, onCheckin, dayType, formScore }: Props) {
+export function HomeView({ sessions, onStart, starting, onCheckin, dayType, formScore, overrides, onSaveOverride, onRecovery, isRestDay, ariaBrief, stagnantExercises = [] }: Props) {
+  const [editMode, setEditMode] = useState(false);
   const { label, sub, color } = DAY_LABEL[dayType];
-  const exercises = PROGRAM[dayType];
+  const baseExercises = PROGRAM[dayType];
+  const exercises: Exercise[] = baseExercises.map(ex => ({
+    ...ex,
+    sets: overrides[ex.name]?.sets ?? ex.sets,
+    weight: overrides[ex.name]?.weight ?? ex.weight,
+  }));
   const streak = computeStreak(sessions);
 
   const today = new Date();
@@ -41,15 +81,6 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType, form
   monday.setDate(today.getDate() - mondayOffset);
   monday.setHours(0, 0, 0, 0);
 
-  const weekSessions = sessions.filter(s => {
-    if (!s.completed) return false;
-    const d = new Date(s.date + "T12:00:00");
-    return d >= monday;
-  });
-
-  const daysElapsedThisWeek = mondayOffset + 1;
-  const possibleWorkoutDays = Math.min(daysElapsedThisWeek, 6);
-
   const sessionDateMap = new Map<string, string>();
   sessions.filter(s => s.completed).forEach(s => {
     const info = DAY_LABEL[s.day_type as DayType];
@@ -58,76 +89,52 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType, form
 
   const DAY_LETTERS = ["L", "M", "M", "J", "V", "S", "D"];
   const todayStr = localDate();
-
   const dateLabel = today.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
   return (
     <div style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
-      <div style={{
-        maxWidth: 480, margin: "0 auto",
-        padding: "20px 20px max(32px, calc(env(safe-area-inset-bottom) + 20px))",
-      }}>
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, background: `radial-gradient(ellipse 80% 45% at 50% 0%, ${color}12 0%, transparent 70%)` }} />
+
+      <div style={{ maxWidth: 480, margin: "0 auto", position: "relative", zIndex: 1, padding: "max(20px, calc(env(safe-area-inset-top) + 12px)) 20px max(32px, calc(env(safe-area-inset-bottom) + 20px))" }}>
+
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <p style={{ fontSize: 12, color: "#374151", textTransform: "capitalize" }}>{dateLabel}</p>
-          <button onClick={onCheckin} style={{
-            background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 10,
-            padding: "7px 12px", color: "#6b7280", fontSize: 12, cursor: "pointer",
-          }}>
-            Check-in
-          </button>
-        </div>
-
-        {/* Stats row */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-          {/* Progress ring card */}
-          <div style={{
-            flex: 1, background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 20,
-            padding: "18px 18px", display: "flex", alignItems: "center", gap: 14,
-          }}>
-            <ProgressRing done={weekSessions.length} total={possibleWorkoutDays} color={color} />
-            <div>
-              <p style={{ fontSize: 11, color: "#374151", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>Cette semaine</p>
-              <p style={{ fontSize: 24, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{weekSessions.length}</p>
-              <p style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                {weekSessions.length === 1 ? "séance" : "séances"}
-              </p>
-            </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
+          <div>
+            <p className="font-racing" style={{ fontSize: 52, color: "#fff", lineHeight: 0.85, letterSpacing: "-0.02em" }}>KAI</p>
+            <p style={{ fontSize: 12, color: MUTED, textTransform: "capitalize" as const, marginTop: 5 }}>{dateLabel}</p>
           </div>
-
-          {/* Streak + form score */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, width: 96 }}>
-            <div style={{
-              background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 20,
-              display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
-              padding: "14px 12px",
-            }}>
-              <p style={{ fontSize: 34, fontWeight: 900, color: streak > 0 ? "#fff" : "#1a1a2e", lineHeight: 1, letterSpacing: "-0.03em" }}>{streak}</p>
-              <p style={{ fontSize: 10, color: "#374151", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>
-                {streak === 1 ? "jour" : "jours"}
-              </p>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             {formScore !== null && (
-              <div style={{
-                background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 20,
-                display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
-                padding: "12px",
-              }}>
-                <p style={{
-                  fontSize: 28, fontWeight: 900, lineHeight: 1, letterSpacing: "-0.03em",
-                  color: formScore >= 70 ? "#059669" : formScore >= 45 ? "#D97706" : "#DC2626",
-                }}>{formScore}</p>
-                <p style={{ fontSize: 9, color: "#374151", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>Forme</p>
+              <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 99, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
+                <span className="font-racing" style={{ fontSize: 18, color: formScore >= 70 ? "#22C55E" : formScore >= 45 ? "#D97706" : "#EF4444", lineHeight: 1 }}>{formScore}</span>
+                <span style={{ fontSize: 10, color: MUTED, textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>forme</span>
+              </div>
+            )}
+            {streak > 0 && (
+              <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 99, padding: "6px 14px", display: "flex", alignItems: "center", gap: 6 }}>
+                <span className="font-racing" style={{ fontSize: 22, color: ACCENT, lineHeight: 1 }}>{streak}</span>
+                <span style={{ fontSize: 11, color: MUTED }}>jours</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 3z" />
+                </svg>
               </div>
             )}
           </div>
         </div>
 
-        {/* Week strip */}
-        <div style={{
-          background: "#10101a", border: "1px solid #1a1a2e", borderRadius: 16,
-          padding: "14px 16px", marginBottom: 20,
-        }}>
+        {/* Day card */}
+        <div style={{ background: SURFACE, border: `1px solid ${color}44`, borderTop: `3px solid ${color}`, borderRadius: 20, padding: "16px 18px", marginBottom: 14, boxShadow: `0 4px 28px ${color}0c` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+            <div>
+              <p className="font-racing" style={{ fontSize: 34, color: "#fff", lineHeight: 1 }}>{label}</p>
+              <p style={{ fontSize: 11, color: MUTED2, marginTop: 3 }}>{sub}</p>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 700, color, background: `${color}14`, border: `1px solid ${color}44`, borderRadius: 8, padding: "4px 10px" }}>
+              {exercises.reduce((a, e) => a + e.sets, 0)} séries
+            </span>
+          </div>
+
+          {/* Week strip */}
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             {Array.from({ length: 7 }, (_, i) => {
               const d = new Date(monday);
@@ -136,20 +143,12 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType, form
               const sessionColor = sessionDateMap.get(dateStr);
               const isToday = dateStr === todayStr;
               const isFuture = d > today;
-
               return (
-                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-                  <span style={{ fontSize: 10, color: isToday ? "#fff" : "#374151", fontWeight: isToday ? 700 : 400 }}>
-                    {DAY_LETTERS[i]}
-                  </span>
-                  <div style={{
-                    width: 34, height: 34, borderRadius: 10,
-                    background: sessionColor ? sessionColor + "22" : isFuture ? "transparent" : "#0a0a12",
-                    border: isToday ? `1.5px solid ${color}` : sessionColor ? `1px solid ${sessionColor}55` : "1px solid #1a1a2e",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    {sessionColor && <div style={{ width: 8, height: 8, borderRadius: "50%", background: sessionColor }} />}
-                    {isToday && !sessionColor && <div style={{ width: 5, height: 5, borderRadius: "50%", background: color, opacity: 0.7 }} />}
+                <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 10, color: isToday ? "#fff" : MUTED, fontWeight: isToday ? 700 : 400 }}>{DAY_LETTERS[i]}</span>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: sessionColor ? `${sessionColor}1a` : isFuture ? "transparent" : "#0c0c0e", border: isToday ? `1.5px solid ${color}` : sessionColor ? `1px solid ${sessionColor}66` : `1px solid ${BORDER}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: isToday ? `0 0 8px ${color}44` : sessionColor ? `0 0 6px ${sessionColor}33` : "none" }}>
+                    {sessionColor && <div style={{ width: 8, height: 8, borderRadius: "50%", background: sessionColor, boxShadow: `0 0 6px ${sessionColor}` }} />}
+                    {isToday && !sessionColor && <div style={{ width: 4, height: 4, borderRadius: "50%", background: color, opacity: 0.8 }} />}
                   </div>
                 </div>
               );
@@ -157,51 +156,76 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType, form
           </div>
         </div>
 
-        {/* Today's workout card */}
-        <div style={{
-          background: "#10101a", border: `1px solid ${color}28`,
-          borderTop: `2px solid ${color}`, borderRadius: 20,
-          overflow: "hidden", marginBottom: 16,
-        }}>
-          <div style={{ padding: "18px 20px 14px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-              <div>
-                <p style={{ fontSize: 24, fontWeight: 900, color: "#fff", letterSpacing: "-0.02em" }}>{label}</p>
-                <p style={{ fontSize: 12, color: "#6b7280", marginTop: 3 }}>{sub}</p>
-              </div>
-              <span style={{ fontSize: 12, color: "#374151" }}>{exercises.reduce((a, e) => a + e.sets, 0)} séries</span>
+        {/* Exercise list */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 10, color: MUTED, textTransform: "uppercase" as const, letterSpacing: "0.12em", fontWeight: 700 }}>Programme du jour</span>
+            <button onClick={() => setEditMode(e => !e)}
+              style={{ padding: "4px 10px", borderRadius: 8, border: editMode ? `1.5px solid ${color}` : `1px solid ${BORDER}`, background: editMode ? `${color}18` : SURFACE, color: editMode ? "#fff" : MUTED, fontSize: 11, cursor: "pointer" }}>
+              {editMode ? "Fermer ✓" : "Modifier ✎"}
+            </button>
+          </div>
+
+          {editMode ? (
+            <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 18, padding: "0 18px", marginBottom: 14 }}>
+              {baseExercises.map(ex => (
+                <ExerciseEditRow key={ex.name} ex={ex} override={overrides[ex.name] ?? {}} onSave={data => onSaveOverride(ex.name, data)} color={color} />
+              ))}
             </div>
-          </div>
-          <div style={{ borderTop: "1px solid #1a1a2e" }}>
-            {exercises.map((ex, i) => (
-              <div key={ex.name} style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "11px 20px",
-                borderBottom: i < exercises.length - 1 ? "1px solid #1a1a2e" : "none",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 3, height: 3, borderRadius: "50%", background: color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 14, color: "#d1d5db" }}>{ex.name}</span>
+          ) : (
+            <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 18, overflow: "hidden" }}>
+              {exercises.map((ex, i) => (
+                <div key={ex.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 18px", borderBottom: i < exercises.length - 1 ? `1px solid ${BG}` : "none" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 3, height: 14, borderRadius: 2, background: color, flexShrink: 0, opacity: 0.7 }} />
+                    <span style={{ fontSize: 14, color: "#e4e4e7", fontWeight: 500 }}>{ex.name}</span>
+                    {stagnantExercises.includes(ex.name) && (
+                      <span style={{ fontSize: 10, color: "#F59E0B", fontWeight: 700, background: "#F59E0B18", border: "1px solid #F59E0B44", borderRadius: 6, padding: "2px 6px", letterSpacing: "0.04em" }}>↑ charge</span>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 12, color: MUTED }}>{ex.sets}×{ex.reps}{ex.weight !== "Poids du corps" && ex.weight !== "" ? ` · ${ex.weight}` : ""}</span>
                 </div>
-                <span style={{ fontSize: 12, color: "#374151", fontVariantNumeric: "tabular-nums" }}>
-                  {ex.sets}×{ex.reps}
-                </span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* ARIA brief */}
+        {ariaBrief && (
+          <div style={{ background: "#040d14", border: "1px solid #0EA5E922", borderLeft: "3px solid #0EA5E9", borderRadius: 18, padding: "14px 18px", marginBottom: 16 }}>
+            <p style={{ fontSize: 11, color: "#0EA5E9", fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.1em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#0EA5E9", boxShadow: "0 0 6px #0EA5E9", display: "inline-block" }} />
+              ARIA
+            </p>
+            <p style={{ fontSize: 14, color: "#e4e4e7", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{ariaBrief}</p>
+          </div>
+        )}
+
+        {/* Rest day banner */}
+        {isRestDay && (
+          <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderLeft: "3px solid #6b7280", borderRadius: 18, padding: "16px 18px", marginBottom: 16 }}>
+            <p className="font-racing" style={{ fontSize: 20, color: "#fff", marginBottom: 4 }}>Repos recommandé</p>
+            <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 14 }}>Tu t&apos;es entraîné hier — ton corps a besoin de récupérer.</p>
+            <button onClick={onRecovery} style={{ width: "100%", padding: "13px 0", borderRadius: 12, border: `1px solid ${BORDER}`, background: "transparent", color: "#9ca3af", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+              Plan récupération active →
+            </button>
+          </div>
+        )}
 
         {/* Start button */}
         <button onClick={onStart} disabled={starting}
-          style={{
-            width: "100%", padding: "19px 0", borderRadius: 18, border: "none",
-            background: color, color: "#fff",
-            fontSize: 15, fontWeight: 800, letterSpacing: "0.06em",
-            textTransform: "uppercase", cursor: starting ? "wait" : "pointer",
-            opacity: starting ? 0.7 : 1, transition: "opacity 0.15s",
-          }}>
-          {starting ? "Démarrage…" : "Commencer"}
+          style={{ width: "100%", padding: "20px 0", borderRadius: 18, border: "none", background: starting ? `${ACCENT}99` : ACCENT, color: "#fff", fontSize: 15, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" as const, cursor: starting ? "wait" : "pointer", boxShadow: starting ? "none" : `0 0 32px #F9731644, 0 4px 16px #F9731622`, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "-apple-system, sans-serif" }}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="white">
+            <path d="M3 1.5l9 5.5-9 5.5V1.5z" />
+          </svg>
+          {starting ? "Démarrage…" : isRestDay ? "Faire quand même →" : "Commencer"}
         </button>
+
+        {!isRestDay && (
+          <button onClick={onRecovery} style={{ width: "100%", marginTop: 14, background: "none", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", letterSpacing: "0.04em" }}>
+            ou prendre une journée de récup active →
+          </button>
+        )}
       </div>
     </div>
   );
