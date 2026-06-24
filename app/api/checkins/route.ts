@@ -30,18 +30,19 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { date, energy, sleep_hours, sleep_quality, mood, notes, pain_zones } = await req.json();
+    const { date, energy, sleep_hours, sleep_quality, mood, notes, body_weight, pain_zones } = await req.json();
     const sql = getDb();
 
     const result = await sql`
-      INSERT INTO daily_checkins (date, energy, sleep_hours, sleep_quality, mood, notes)
-      VALUES (${date}, ${energy}, ${sleep_hours}, ${sleep_quality}, ${mood}, ${notes ?? null})
+      INSERT INTO daily_checkins (date, energy, sleep_hours, sleep_quality, mood, notes, body_weight)
+      VALUES (${date}, ${energy}, ${sleep_hours}, ${sleep_quality}, ${mood}, ${notes ?? null}, ${body_weight ?? null})
       ON CONFLICT (date) DO UPDATE SET
         energy = EXCLUDED.energy,
         sleep_hours = EXCLUDED.sleep_hours,
         sleep_quality = EXCLUDED.sleep_quality,
         mood = EXCLUDED.mood,
-        notes = EXCLUDED.notes
+        notes = EXCLUDED.notes,
+        body_weight = EXCLUDED.body_weight
       RETURNING *`;
 
     const checkin = (result as Record<string, unknown>[])[0];

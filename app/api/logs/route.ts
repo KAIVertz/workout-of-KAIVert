@@ -3,14 +3,28 @@ import { getDb } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   try {
-    const { session_id, exercise_name, set_number, reps, weight_kg } = await req.json();
+    const { session_id, exercise_name, set_number, reps, weight_kg, flag = null } = await req.json();
     const sql = getDb();
-    // True upsert — safe under concurrent taps
     await sql`
-      INSERT INTO exercise_logs (session_id, exercise_name, set_number, reps, weight_kg)
-      VALUES (${session_id}, ${exercise_name}, ${set_number}, ${reps}, ${weight_kg})
+      INSERT INTO exercise_logs (session_id, exercise_name, set_number, reps, weight_kg, flag)
+      VALUES (${session_id}, ${exercise_name}, ${set_number}, ${reps}, ${weight_kg}, ${flag})
       ON CONFLICT (session_id, exercise_name, set_number)
-      DO UPDATE SET reps = EXCLUDED.reps, weight_kg = EXCLUDED.weight_kg`;
+      DO UPDATE SET reps = EXCLUDED.reps, weight_kg = EXCLUDED.weight_kg, flag = EXCLUDED.flag`;
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { session_id, exercise_name, set_number, flag } = await req.json();
+    const sql = getDb();
+    await sql`
+      UPDATE exercise_logs SET flag = ${flag ?? null}
+      WHERE session_id = ${session_id}
+        AND exercise_name = ${exercise_name}
+        AND set_number = ${set_number}`;
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

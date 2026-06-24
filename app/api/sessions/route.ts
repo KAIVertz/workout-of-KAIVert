@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const sql = getDb();
     const rows = await sql`
-      SELECT * FROM workout_sessions ORDER BY date DESC, id DESC LIMIT 300`;
+      SELECT * FROM workout_sessions ORDER BY date DESC, id DESC LIMIT 100`;
     return NextResponse.json(rows);
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

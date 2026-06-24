@@ -13,7 +13,7 @@ export async function POST() {
         duration_seconds INTEGER,
         created_at    TIMESTAMPTZ DEFAULT NOW()
       )`;
-    await sql`ALTER TABLE workout_sessions ADD COLUMN IF NOT EXISTS duration_seconds INTEGER`;
+    await sql`ALTER TABLE daily_checkins ADD COLUMN IF NOT EXISTS body_weight NUMERIC`;
     await sql`
       CREATE TABLE IF NOT EXISTS exercise_logs (
         id           SERIAL PRIMARY KEY,
@@ -45,6 +45,47 @@ export async function POST() {
       checkin_id  INTEGER REFERENCES daily_checkins(id) ON DELETE CASCADE,
       zone        TEXT NOT NULL,
       intensity   INTEGER CHECK (intensity BETWEEN 1 AND 3)
+    )`;
+
+    await sql`CREATE TABLE IF NOT EXISTS program_overrides (
+      exercise_name TEXT PRIMARY KEY,
+      sets          INTEGER,
+      weight        TEXT,
+      updated_at    TIMESTAMPTZ DEFAULT NOW()
+    )`;
+
+    await sql`CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id         SERIAL PRIMARY KEY,
+      endpoint   TEXT NOT NULL UNIQUE,
+      p256dh     TEXT NOT NULL,
+      auth       TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`;
+
+    await sql`CREATE TABLE IF NOT EXISTS user_settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )`;
+
+    await sql`ALTER TABLE workout_sessions ADD COLUMN IF NOT EXISTS notes TEXT`;
+    await sql`ALTER TABLE exercise_logs ADD COLUMN IF NOT EXISTS flag TEXT`;
+
+    await sql`CREATE TABLE IF NOT EXISTS goals (
+      id            SERIAL PRIMARY KEY,
+      label         TEXT NOT NULL,
+      target_value  NUMERIC NOT NULL,
+      unit          TEXT DEFAULT 'kg',
+      current_value NUMERIC DEFAULT 0,
+      deadline      TEXT,
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    )`;
+
+    await sql`CREATE TABLE IF NOT EXISTS nutrition_logs (
+      id         SERIAL PRIMARY KEY,
+      date       TEXT NOT NULL,
+      meal       TEXT NOT NULL,
+      protein_g  INTEGER NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
     )`;
 
     return NextResponse.json({ ok: true });

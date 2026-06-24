@@ -1,0 +1,106 @@
+<!-- @dsCard group="Screens" -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=390">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+:root{
+  --bg:#09090b;--surface:#111113;--border:#27272a;
+  --accent:#F97316;--day:#7C3AED;
+  --text:#fafafa;--t2:#a1a1aa;--t3:#52525b;
+}
+body{
+  width:390px;height:844px;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;
+  overflow:hidden;display:flex;flex-direction:column;position:relative;
+}
+.glow{position:absolute;inset:0;background:radial-gradient(ellipse 80% 40% at 50% 0%,#7C3AED0e 0%,transparent 60%);pointer-events:none;z-index:0;}
+.sb{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;flex-shrink:0;position:relative;z-index:1;}
+.sb .t{font-size:15px;font-weight:700;}
+.sb .timer{font-size:13px;color:var(--t3);font-variant-numeric:tabular-nums;}
+.navbar{display:flex;align-items:center;justify-content:space-between;padding:0 20px 12px;flex-shrink:0;position:relative;z-index:1;}
+.nb-back{font-size:13px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
+.nb-center{text-align:center;}
+.nb-prog{font-size:11px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase;}
+.nb-finish{font-size:12px;font-weight:700;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 12px;}
+.pbar{height:3px;background:var(--border);flex-shrink:0;position:relative;z-index:1;}
+.pfill{height:100%;width:33%;background:var(--day);box-shadow:0 0 8px #7C3AED66;}
+.ex-content{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 28px;position:relative;z-index:1;}
+.ex-nav-row{display:flex;align-items:center;justify-content:space-between;width:100%;margin-bottom:28px;}
+.nav-btn{width:44px;height:44px;border-radius:12px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--t2);font-size:20px;}
+.muscle-tag{font-size:11px;font-weight:700;color:var(--day);background:#7C3AED14;border:1px solid #7C3AED44;border-radius:8px;padding:5px 14px;margin-bottom:12px;}
+.ex-name{font-family:'Racing Sans One',system-ui;font-size:44px;color:var(--text);text-align:center;line-height:1.05;letter-spacing:-.01em;margin-bottom:28px;}
+.weight-sel{display:flex;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;width:100%;margin-bottom:28px;}
+.w-btn{width:60px;height:52px;display:flex;align-items:center;justify-content:center;font-size:26px;color:var(--t2);}
+.w-val{flex:1;text-align:center;font-family:'Racing Sans One',system-ui;font-size:30px;font-style:italic;color:var(--text);}
+.set-dots{display:flex;gap:8px;margin-bottom:10px;}
+.dot{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;border:2px solid var(--border);}
+.dot.done{background:var(--day);border-color:var(--day);color:#fff;box-shadow:0 0 16px #7C3AED55;}
+.dot.next{border-color:var(--day);color:var(--day);background:#7C3AED10;}
+.dot.pend{background:var(--surface);color:var(--t3);border-color:var(--border);}
+.set-lbl{font-size:11px;color:var(--t3);letter-spacing:.06em;text-transform:uppercase;}
+.rest-bar{width:100%;background:var(--surface);border:1px solid #0EA5E922;border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;margin-top:10px;}
+.rest-label{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;}
+.rest-timer{font-family:'Racing Sans One',system-ui;font-size:22px;font-style:italic;color:#0EA5E9;font-variant-numeric:tabular-nums;}
+.rest-track{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+.rest-fill{height:100%;width:62%;background:#0EA5E9;box-shadow:0 0 6px #0EA5E966;}
+.btns{padding:0 20px 12px;flex-shrink:0;position:relative;z-index:1;display:flex;flex-direction:column;gap:10px;}
+.btn-main{width:100%;padding:22px;border-radius:18px;border:none;background:var(--accent);color:#fff;font-size:16px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;box-shadow:0 0 36px #F9731644;}
+.btn-sec{width:100%;padding:14px;border-radius:14px;border:1px solid var(--border);background:transparent;color:var(--t3);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;font-family:-apple-system,sans-serif;}
+.tabbar{height:83px;background:var(--bg);border-top:1px solid #1c1c1f;display:flex;padding:0 8px;flex-shrink:0;position:relative;z-index:1;}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;padding-top:10px;gap:4px;}
+.tab-lbl{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+.on .tab-lbl{color:var(--accent);}
+.off .tab-lbl{color:var(--t3);}
+</style>
+</head>
+<body>
+<div class="glow"></div>
+<div class="sb"><span class="t">9:41</span><span class="timer">12:34</span></div>
+<div class="navbar">
+  <span class="nb-back">← Chest</span>
+  <div class="nb-center"><div class="nb-prog">Exercice 2 / 6</div></div>
+  <div class="nb-finish">Terminer · 33%</div>
+</div>
+<div class="pbar"><div class="pfill"></div></div>
+<div class="ex-content">
+  <div class="ex-nav-row">
+    <div class="nav-btn">‹</div>
+    <div></div>
+    <div class="nav-btn">›</div>
+  </div>
+  <div class="muscle-tag">Pectoraux</div>
+  <div class="ex-name">DB Floor Press</div>
+  <div class="weight-sel">
+    <div class="w-btn">−</div>
+    <div class="w-val">12 kg</div>
+    <div class="w-btn">+</div>
+  </div>
+  <div class="set-dots">
+    <div class="dot done">✓</div>
+    <div class="dot done">✓</div>
+    <div class="dot done">✓</div>
+    <div class="dot next">4</div>
+    <div class="dot pend">5</div>
+  </div>
+  <div class="set-lbl">3 / 5 séries</div>
+  <div class="rest-bar" style="margin-top:16px;">
+    <span class="rest-label">Repos</span>
+    <div class="rest-track"><div class="rest-fill"></div></div>
+    <span class="rest-timer">23s</span>
+  </div>
+</div>
+<div class="btns">
+  <button class="btn-main">Série faite ✓</button>
+  <button class="btn-sec"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Difficile — à améliorer</button>
+</div>
+<div class="tabbar">
+  <div class="tab on"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#F97316" stroke-width="2" stroke-linecap="round"><rect x="3" y="8" width="4" height="6" rx="1"/><rect x="15" y="8" width="4" height="6" rx="1"/><line x1="7" y1="11" x2="15" y2="11"/></svg><span class="tab-lbl">Workout</span></div>
+  <div class="tab off"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#52525b" stroke-width="2" stroke-linecap="round"><line x1="4" y1="18" x2="4" y2="10"/><line x1="8" y1="18" x2="8" y2="14"/><line x1="12" y1="18" x2="12" y2="6"/><line x1="16" y1="18" x2="16" y2="12"/><line x1="20" y1="18" x2="20" y2="8"/></svg><span class="tab-lbl">Stats</span></div>
+  <div class="tab off"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#52525b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="9"/><path d="M9 8.5c0-1.1.9-2 2-2s2 .9 2 2c0 1.7-2 2.5-2 4"/><circle cx="11" cy="15.5" r=".5" fill="#52525b"/></svg><span class="tab-lbl">Coach</span></div>
+</div>
+</body>
+</html>

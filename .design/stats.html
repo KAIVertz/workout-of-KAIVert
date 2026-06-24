@@ -1,0 +1,113 @@
+<!-- @dsCard group="Screens" -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=390">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Racing+Sans+One&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+:root{
+  --bg:#09090b;--surface:#111113;--border:#27272a;
+  --accent:#F97316;--text:#fafafa;--t2:#a1a1aa;--t3:#52525b;
+}
+body{
+  width:390px;height:844px;background:var(--bg);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;
+  overflow:hidden;display:flex;flex-direction:column;
+}
+.main{flex:1;display:flex;flex-direction:column;padding:0 20px;overflow:hidden;}
+.sb{height:44px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.sb .t{font-size:15px;font-weight:700;}
+.hdr{margin-bottom:18px;flex-shrink:0;}
+.hdr-title{font-family:'Racing Sans One',system-ui;font-size:38px;color:var(--text);letter-spacing:-.02em;}
+.hdr-sub{font-size:12px;color:var(--t3);margin-top:2px;}
+.stats-row{display:flex;gap:10px;margin-bottom:14px;flex-shrink:0;}
+.stat-card{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:16px 14px;}
+.stat-card.hl{border-color:#F9731644;box-shadow:0 0 16px #F9731610;}
+.sv{font-family:'Racing Sans One',system-ui;font-size:40px;line-height:1;letter-spacing:-.02em;}
+.sv.a{color:var(--accent);}
+.sv.w{color:var(--text);}
+.sv.g{color:#22C55E;}
+.sl{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.08em;margin-top:4px;}
+.week-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:14px 16px;margin-bottom:14px;flex-shrink:0;}
+.wc-title{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:12px;}
+.week{display:flex;justify-content:space-between;}
+.wd{display:flex;flex-direction:column;align-items:center;gap:4px;}
+.wl{font-size:10px;color:var(--t3);}
+.wdot{width:34px;height:34px;border-radius:9px;background:#0c0c0e;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;}
+.wi{width:10px;height:10px;border-radius:50%;}
+.prog-sec{flex:1;overflow:hidden;display:flex;flex-direction:column;}
+.sec-title{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.1em;font-weight:700;margin-bottom:12px;flex-shrink:0;}
+.prog-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:16px;flex:1;display:flex;flex-direction:column;}
+.prog-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+.prog-name{font-size:15px;font-weight:700;color:var(--text);}
+.prog-pr{font-size:11px;color:#22C55E;font-weight:700;background:#22C55E14;border:1px solid #22C55E44;border-radius:8px;padding:3px 8px;}
+.chart{display:flex;align-items:flex-end;gap:6px;flex:1;min-height:0;}
+.bar{flex:1;border-radius:6px 6px 0 0;background:var(--accent);}
+.bar:not(.last){opacity:.3;}
+.bar.last{box-shadow:0 0 14px #F9731655;}
+.chart-row{display:flex;gap:6px;margin-top:8px;flex-shrink:0;}
+.cl{flex:1;text-align:center;font-size:10px;color:var(--t3);}
+.tabbar{height:83px;background:var(--bg);border-top:1px solid #1c1c1f;display:flex;padding:0 8px;flex-shrink:0;}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;padding-top:10px;gap:4px;}
+.tab-lbl{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;}
+.on .tab-lbl{color:var(--accent);}
+.off .tab-lbl{color:var(--t3);}
+</style>
+</head>
+<body>
+<div class="main">
+  <div class="sb"><span class="t">9:41</span></div>
+  <div class="hdr">
+    <div class="hdr-title">Stats</div>
+    <div class="hdr-sub">Semaine 25 · Juin 2026</div>
+  </div>
+  <div class="stats-row">
+    <div class="stat-card hl"><div class="sv a">7</div><div class="sl" style="display:flex;align-items:center;gap:4px;">Streak <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 3z"/></svg></div></div>
+    <div class="stat-card"><div class="sv w">4</div><div class="sl">Cette semaine</div></div>
+    <div class="stat-card"><div class="sv g">12</div><div class="sl">PR · kg</div></div>
+  </div>
+  <div class="week-card">
+    <div class="wc-title">Cette semaine</div>
+    <div class="week">
+      <div class="wd"><span class="wl">L</span><div class="wdot" style="background:#7C3AED1a;border-color:#7C3AED66"><div class="wi" style="background:#7C3AED"></div></div></div>
+      <div class="wd"><span class="wl">M</span><div class="wdot" style="background:#D977061a;border-color:#D9770666"><div class="wi" style="background:#D97706"></div></div></div>
+      <div class="wd"><span class="wl">M</span><div class="wdot" style="background:#0596691a;border-color:#05996966"><div class="wi" style="background:#059669"></div></div></div>
+      <div class="wd"><span class="wl">J</span><div class="wdot" style="background:#DC26261a;border-color:#DC262666"><div class="wi" style="background:#DC2626"></div></div></div>
+      <div class="wd"><span class="wl">V</span><div class="wdot"></div></div>
+      <div class="wd"><span class="wl">S</span><div class="wdot"></div></div>
+      <div class="wd"><span class="wl">D</span><div class="wdot"></div></div>
+    </div>
+  </div>
+  <div class="prog-sec">
+    <div class="sec-title">Progression · Floor Press</div>
+    <div class="prog-card">
+      <div class="prog-hdr">
+        <span class="prog-name">DB Floor Press</span>
+        <span class="prog-pr">+2 kg ce mois</span>
+      </div>
+      <div class="chart">
+        <div class="bar" style="height:28%"></div>
+        <div class="bar" style="height:42%"></div>
+        <div class="bar" style="height:50%"></div>
+        <div class="bar" style="height:58%"></div>
+        <div class="bar" style="height:64%"></div>
+        <div class="bar" style="height:74%"></div>
+        <div class="bar last" style="height:92%"></div>
+      </div>
+      <div class="chart-row">
+        <div class="cl">S1</div><div class="cl">S2</div><div class="cl">S3</div>
+        <div class="cl">S4</div><div class="cl">S5</div><div class="cl">S6</div>
+        <div class="cl" style="color:#F97316;font-weight:700">S7</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="tabbar">
+  <div class="tab off"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#52525b" stroke-width="2" stroke-linecap="round"><rect x="3" y="8" width="4" height="6" rx="1"/><rect x="15" y="8" width="4" height="6" rx="1"/><line x1="7" y1="11" x2="15" y2="11"/></svg><span class="tab-lbl">Workout</span></div>
+  <div class="tab on"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#F97316" stroke-width="2" stroke-linecap="round"><line x1="4" y1="18" x2="4" y2="10"/><line x1="8" y1="18" x2="8" y2="14"/><line x1="12" y1="18" x2="12" y2="6"/><line x1="16" y1="18" x2="16" y2="12"/><line x1="20" y1="18" x2="20" y2="8"/></svg><span class="tab-lbl">Stats</span></div>
+  <div class="tab off"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#52525b" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="9"/><path d="M9 8.5c0-1.1.9-2 2-2s2 .9 2 2c0 1.7-2 2.5-2 4"/><circle cx="11" cy="15.5" r=".5" fill="#52525b"/></svg><span class="tab-lbl">Coach</span></div>
+</div>
+</body>
+</html>
