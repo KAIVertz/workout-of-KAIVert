@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { DAY_LABEL, PROGRAM, localDate, computeStreak, DayType, Exercise } from "@/lib/program";
+import { DAY_LABEL, PROGRAM, localDate, computeStreak, getNextDayType, getEquipment, DayType, Exercise } from "@/lib/program";
 import { Session, Override } from "@/lib/types";
 
 interface Props {
@@ -74,6 +74,16 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType, form
   }));
   const streak = computeStreak(sessions);
 
+  const tomorrowType = getNextDayType();
+  const tomorrowInfo = DAY_LABEL[tomorrowType];
+  const tomorrowExercises: Exercise[] = PROGRAM[tomorrowType].map(ex => ({
+    ...ex,
+    sets: overrides[ex.name]?.sets ?? ex.sets,
+    weight: overrides[ex.name]?.weight ?? ex.weight,
+  }));
+  const todayEquipment = getEquipment(exercises);
+  const tomorrowEquipment = getEquipment(tomorrowExercises);
+
   const today = new Date();
   const todayDow = today.getDay();
   const mondayOffset = (todayDow + 6) % 7;
@@ -146,8 +156,12 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType, form
               return (
                 <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                   <span style={{ fontSize: 10, color: isToday ? "#fff" : MUTED, fontWeight: isToday ? 700 : 400 }}>{DAY_LETTERS[i]}</span>
-                  <div style={{ width: 30, height: 30, borderRadius: 8, background: sessionColor ? `${sessionColor}1a` : isFuture ? "transparent" : "#0c0c0e", border: isToday ? `1.5px solid ${color}` : sessionColor ? `1px solid ${sessionColor}66` : `1px solid ${BORDER}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: isToday ? `0 0 8px ${color}44` : sessionColor ? `0 0 6px ${sessionColor}33` : "none" }}>
-                    {sessionColor && <div style={{ width: 8, height: 8, borderRadius: "50%", background: sessionColor, boxShadow: `0 0 6px ${sessionColor}` }} />}
+                  <div style={{ width: 30, height: 30, borderRadius: 8, background: sessionColor ? `${sessionColor}1a` : isFuture ? "transparent" : "#0c0c0e", border: isToday ? `1.5px solid ${color}` : sessionColor ? `1px solid ${sessionColor}66` : `1px solid ${BORDER}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: isToday ? `0 0 8px ${color}44` : sessionColor ? `0 0 8px ${sessionColor}44` : "none" }}>
+                    {sessionColor && (
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={sessionColor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 4px ${sessionColor}99)` }}>
+                        <polyline points="2 7 5.5 10.5 12 3.5" />
+                      </svg>
+                    )}
                     {isToday && !sessionColor && <div style={{ width: 4, height: 4, borderRadius: "50%", background: color, opacity: 0.8 }} />}
                   </div>
                 </div>
@@ -189,6 +203,35 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType, form
             </div>
           )}
         </div>
+
+        {/* Equipment */}
+        {(todayEquipment.length > 0 || tomorrowEquipment.length > 0) && (
+          <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 18, padding: "14px 18px", marginBottom: 14 }}>
+            <p style={{ fontSize: 10, color: MUTED, textTransform: "uppercase" as const, letterSpacing: "0.12em", fontWeight: 700, marginBottom: 12 }}>Équipement à prévoir</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {todayEquipment.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, color, fontWeight: 700, marginBottom: 6 }}>Aujourd&apos;hui · {label}</p>
+                  <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+                    {todayEquipment.map(item => (
+                      <span key={item} style={{ fontSize: 12, color: "#e4e4e7", background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "5px 10px" }}>{item}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {tomorrowEquipment.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, color: tomorrowInfo.color, fontWeight: 700, marginBottom: 6 }}>Demain · {tomorrowInfo.label}</p>
+                  <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+                    {tomorrowEquipment.map(item => (
+                      <span key={item} style={{ fontSize: 12, color: "#e4e4e7", background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "5px 10px" }}>{item}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ARIA brief */}
         {ariaBrief && (
