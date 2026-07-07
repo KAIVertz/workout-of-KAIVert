@@ -712,6 +712,8 @@ export default function HomePage() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const sess = await r.json();
       setActive(sess);
+      // Add immediately so optimistic finish always finds the session
+      setSessions(prev => [sess, ...prev.filter(s => s.id !== sess.id)]);
       setLogs([]);
       setPrevLogs([]);
       const updated = await fetchSessions();
@@ -722,23 +724,32 @@ export default function HomePage() {
 
   async function finishWorkout() {
     if (!active) return;
-    try {
-      const res = await fetch(`/api/sessions/${active.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ completed: true, duration_seconds: elapsed > 0 ? elapsed : null }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    } catch (e) {
-      console.error("Erreur sauvegarde séance:", e);
-      return;
-    }
-    const difficultExercises = [...new Set(logs.filter(l => l.flag === "difficult").map(l => l.exercise_name))];
-    setSummary({ duration: elapsed, setsCompleted: doneSets, totalSets, dayType, sessionId: active.id, muscles: [...new Set(exercises.map(ex => ex.muscle))], difficultExercises });
-    // Optimistic update — show checkmark in week strip immediately
     const finishedId = active.id;
-    setSessions(prev => prev.map(s => s.id === finishedId ? { ...s, completed: true, duration_seconds: elapsed } : s));
+    const finishedDate = active.date;
+    const finishedDayType = active.day_type;
+    const finishedCreatedAt = active.created_at;
+    const finishedDuration = elapsed > 0 ? elapsed : null;
+
+    const dur = finishedDuration ?? undefined;
+    // Optimistic update FIRST — guaranteed checkmark regardless of API result
+    setSessions(prev => {
+      const exists = prev.some(s => s.id === finishedId);
+      if (exists) {
+        return prev.map(s => s.id === finishedId ? { ...s, completed: true, duration_seconds: dur } : s);
+      }
+      return [{ id: finishedId, date: finishedDate, day_type: finishedDayType, completed: true, duration_seconds: dur, created_at: finishedCreatedAt } as Session, ...prev];
+    });
+
+    const difficultExercises = [...new Set(logs.filter(l => l.flag === "difficult").map(l => l.exercise_name))];
+    setSummary({ duration: elapsed, setsCompleted: doneSets, totalSets, dayType, sessionId: finishedId, muscles: [...new Set(exercises.map(ex => ex.muscle))], difficultExercises });
     setActive(null); setLogs([]); setPrevLogs([]); setConfirmFinish(false); setAddedExercises([]); setWeights({});
+
+    // Fire PATCH in background — doesn't block or gate the checkmark
+    fetch(`/api/sessions/${finishedId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ completed: true, duration_seconds: finishedDuration }),
+    }).catch(e => console.error("Erreur sauvegarde séance:", e));
   }
 
   async function cancelWorkout() {
