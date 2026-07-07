@@ -110,7 +110,7 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType, form
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
           <div>
-            <p className="font-racing" style={{ fontSize: 52, color: "#fff", lineHeight: 0.85, letterSpacing: "-0.02em" }}>KAI</p>
+            <p className="font-racing" style={{ fontSize: 38, color: "#fff", lineHeight: 0.85, letterSpacing: "-0.02em" }}>Daily Compound</p>
             <p style={{ fontSize: 12, color: MUTED, textTransform: "capitalize" as const, marginTop: 5 }}>{dateLabel}</p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>

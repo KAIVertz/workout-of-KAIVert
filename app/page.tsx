@@ -739,8 +739,6 @@ export default function HomePage() {
     const finishedId = active.id;
     setSessions(prev => prev.map(s => s.id === finishedId ? { ...s, completed: true, duration_seconds: elapsed } : s));
     setActive(null); setLogs([]); setPrevLogs([]); setConfirmFinish(false); setAddedExercises([]); setWeights({});
-    // Delay fetch to avoid DB race condition overwriting the optimistic update
-    setTimeout(() => fetchSessions().catch(() => {}), 1500);
   }
 
   async function cancelWorkout() {
@@ -778,7 +776,7 @@ export default function HomePage() {
     <div style={{ height: "100svh", display: "flex", flexDirection: "column", background: BG }}>
       {showCheckin && <CheckinModal onClose={() => { setShowCheckin(false); fetch(`/api/checkins?date=${localDate()}`).then(r => r.json()).then(ci => { if (ci?.energy) setFormScore(Math.round(((Number(ci.energy) + Number(ci.sleep_quality) + Number(ci.mood)) / 3) * 20)); }).catch(() => {}); }} />}
       {showRecovery && <RecoveryModal sessions={sessions} onClose={() => setShowRecovery(false)} />}
-      {summary && <SessionSummary data={summary} sessions={sessions} onClose={() => setSummary(null)} />}
+      {summary && <SessionSummary data={summary} sessions={sessions} onClose={() => { setSummary(null); fetchSessions().catch(() => {}); }} />}
       {confirmFinish && active && pct < 100 && (
         <IncompleteConfirmModal active={active} exercises={exercises} logs={logs} elapsed={elapsed} color={color} doneSets={doneSets} totalSets={totalSets} pct={pct} onFinish={finishWorkout} onCancel={() => setConfirmFinish(false)} />
       )}
