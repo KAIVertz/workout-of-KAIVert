@@ -34,6 +34,29 @@ export function getTodayType(): DayType {
   return WEEKLY_SCHEDULE[new Date().getDay()];
 }
 
+export function getNextDayType(): DayType {
+  return WEEKLY_SCHEDULE[new Date(Date.now() + 86_400_000).getDay()];
+}
+
+/** Equipment to bring, derived from dumbbell weights used + exercises that need specific gear */
+export function getEquipment(exercises: Exercise[]): string[] {
+  const items: string[] = [];
+  const weights = new Set<number>();
+  let hasRope = false;
+  let hasRoller = false;
+  for (const ex of exercises) {
+    if (ex.name === "Corde à sauter") hasRope = true;
+    if (ex.name === "Ab Roller") hasRoller = true;
+    for (const m of ex.weight.match(/\d+(?:\.\d+)?/g) ?? []) weights.add(parseFloat(m));
+  }
+  if (weights.size > 0) {
+    items.push(`Haltères ${[...weights].sort((a, b) => a - b).map(w => `${w}kg`).join(", ")}`);
+  }
+  if (hasRope) items.push("Corde à sauter");
+  if (hasRoller) items.push("Ab Roller");
+  return items;
+}
+
 /** Local date string YYYY-MM-DD — never use toISOString() which shifts to UTC */
 export function localDate(d = new Date()): string {
   return [
