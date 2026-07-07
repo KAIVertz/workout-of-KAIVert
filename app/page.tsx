@@ -32,37 +32,6 @@ function parseReps(r: string): number {
   return m ? parseInt(m[1]) : 10;
 }
 
-// ─── Rest Timer ───────────────────────────────────────────────────────────────
-function RestTimer({ duration, onDone }: { duration: number; onDone: () => void }) {
-  const [secs, setSecs] = useState(duration);
-  const ref = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    ref.current = setInterval(() => {
-      setSecs(s => {
-        if (s <= 1) { clearInterval(ref.current!); navigator.vibrate?.([200, 100, 200]); return 0; }
-        return s - 1;
-      });
-    }, 1000);
-    return () => { if (ref.current) clearInterval(ref.current); };
-  }, []);
-
-  const pct = ((duration - secs) / duration) * 100;
-  const done = secs === 0;
-
-  return (
-    <div style={{ width: "100%", background: SURFACE, border: `1px solid ${done ? "#0EA5E944" : BORDER}`, borderRadius: 12, padding: "10px 14px", display: "flex", alignItems: "center", gap: 12, transition: "border-color 0.3s", marginTop: 12 }}>
-      <span style={{ fontSize: 11, color: MUTED, textTransform: "uppercase" as const, letterSpacing: "0.08em", flexShrink: 0 }}>Repos</span>
-      <div style={{ flex: 1, height: 3, background: BORDER, borderRadius: 2, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${pct}%`, background: "#0EA5E9", boxShadow: "0 0 6px #0EA5E966", transition: "width 1s linear" }} />
-      </div>
-      <span className="font-racing" style={{ fontSize: 20, fontStyle: "italic", color: done ? "#0EA5E9" : "#fff", fontVariantNumeric: "tabular-nums", flexShrink: 0, minWidth: 40, textAlign: "right" as const }}>
-        {done ? "GO!" : `${secs}s`}
-      </span>
-      <button onClick={onDone} style={{ background: "none", border: "none", color: MUTED, fontSize: 18, cursor: "pointer", padding: 0, lineHeight: 1, flexShrink: 0 }}>×</button>
-    </div>
-  );
-}
 
 // ─── Active Exercise View ─────────────────────────────────────────────────────
 function ActiveExerciseView({
@@ -89,12 +58,11 @@ function ActiveExerciseView({
 }) {
   const ex = exercises[currentIdx];
   const weightKg = weights[ex.name] !== undefined ? weights[ex.name] : parseWeight(ex.weight);
-  const [resting, setResting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const hasAutoAdvanced = useRef(false);
 
-  useEffect(() => { setResting(false); setBusy(false); setShowCancelConfirm(false); }, [ex.name]);
+  useEffect(() => { setBusy(false); setShowCancelConfirm(false); }, [ex.name]);
   useEffect(() => { hasAutoAdvanced.current = false; }, [ex.name]);
 
   const dr = parseReps(ex.reps);
@@ -129,7 +97,6 @@ function ActiveExerciseView({
       });
     } catch { onLogsUpdate(snapshot); }
     setBusy(false);
-    if (!asDifficult) setResting(true);
     navigator.vibrate?.([40]);
   }
 
@@ -266,7 +233,6 @@ function ActiveExerciseView({
           {doneSetsForEx} / {ex.sets} séries
         </p>
 
-        {resting && <RestTimer duration={60} onDone={() => setResting(false)} />}
       </div>
 
       {/* Action buttons */}
