@@ -735,6 +735,8 @@ export default function HomePage() {
     }
     const difficultExercises = [...new Set(logs.filter(l => l.flag === "difficult").map(l => l.exercise_name))];
     setSummary({ duration: elapsed, setsCompleted: doneSets, totalSets, dayType, sessionId: active.id, muscles: [...new Set(exercises.map(ex => ex.muscle))], difficultExercises });
+    // Optimistic update — show checkmark in week strip immediately
+    setSessions(prev => prev.map(s => s.id === active.id ? { ...s, completed: true, duration_seconds: elapsed } : s));
     setActive(null); setLogs([]); setPrevLogs([]); setConfirmFinish(false); setAddedExercises([]); setWeights({});
     fetchSessions().catch(() => {});
   }
