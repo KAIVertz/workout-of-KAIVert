@@ -25,12 +25,12 @@ const MUTED = "#52525b";
 const MUTED2 = "#a1a1aa";
 const ACCENT = "#F97316";
 
-const WEIGHT_PRESETS = ["Poids du corps", "5kg", "7kg", "10kg", "12kg"];
+const WEIGHT_PRESETS = ["Poids du corps", "5kg", "7kg", "13kg"];
 
 function ExerciseEditRow({ ex, override, onSave, color }: { ex: Exercise; override: Override; onSave: (data: Override) => void; color: string }) {
   const [sets, setSets] = useState(override.sets ?? ex.sets);
   const [weight, setWeight] = useState(override.weight ?? ex.weight);
-  const changed = sets !== ex.sets || weight !== ex.weight;
+  const changed = sets !== (override.sets ?? ex.sets) || weight !== (override.weight ?? ex.weight);
 
   return (
     <div style={{ padding: "12px 0", borderBottom: `1px solid ${BG}` }}>
@@ -115,7 +115,7 @@ export function HomeView({ sessions, onStart, starting, onCheckin, dayType, form
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             {formScore !== null && (
-              <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 99, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6 }}>
+              <div onClick={onCheckin} style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 99, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                 <span className="font-racing" style={{ fontSize: 18, color: formScore >= 70 ? "#22C55E" : formScore >= 45 ? "#D97706" : "#EF4444", lineHeight: 1 }}>{formScore}</span>
                 <span style={{ fontSize: 10, color: MUTED, textTransform: "uppercase" as const, letterSpacing: "0.08em" }}>forme</span>
               </div>

@@ -33,7 +33,13 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { session_id, exercise_name, set_number } = await req.json();
+    const url = new URL(req.url);
+    const session_id = url.searchParams.get("session_id");
+    const exercise_name = url.searchParams.get("exercise_name");
+    const set_number = url.searchParams.get("set_number");
+    if (!session_id || !exercise_name || !set_number) {
+      return NextResponse.json({ error: "missing params" }, { status: 400 });
+    }
     const sql = getDb();
     await sql`
       DELETE FROM exercise_logs

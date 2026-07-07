@@ -24,8 +24,8 @@ function fmt(s: number) {
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 }
 function parseWeight(w: string): number {
-  const m = w.match(/(\d+(?:\.\d+)?)/);
-  return m ? parseFloat(m[1]) : 0;
+  const m = w.match(/(\d+(?:\.\d+)?)/g);
+  return m ? parseFloat(m[m.length - 1]) : 0;
 }
 function parseReps(r: string): number {
   const m = r.match(/(\d+)/);
@@ -91,21 +91,26 @@ function ActiveExerciseView({
   const weightKg = weights[ex.name] !== undefined ? weights[ex.name] : parseWeight(ex.weight);
   const [resting, setResting] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const hasAutoAdvanced = useRef(false);
 
-  useEffect(() => { setResting(false); setBusy(false); }, [ex.name]);
+  useEffect(() => { setResting(false); setBusy(false); setShowCancelConfirm(false); }, [ex.name]);
+  useEffect(() => { hasAutoAdvanced.current = false; }, [ex.name]);
 
   const dr = parseReps(ex.reps);
   const saved = (sn: number) => logs.find(l => l.exercise_name === ex.name && l.set_number === sn);
   const doneSetsForEx = Array.from({ length: ex.sets }, (_, i) => i + 1).filter(s => !!saved(s)).length;
   const allDone = doneSetsForEx === ex.sets;
   const nextSet = allDone ? null : Array.from({ length: ex.sets }, (_, i) => i + 1).find(s => !saved(s)) ?? null;
+  const isLastEx = currentIdx >= exercises.length - 1;
 
   const prevForEx = prevLogs.filter(l => l.exercise_name === ex.name && l.set_number > 0);
   const prevBest = prevForEx.length ? { kg: Math.max(...prevForEx.map(l => Number(l.weight_kg))) } : null;
 
-  // Auto-advance when all sets done
+  // Auto-advance when all sets done — guard against re-firing when user navigates back
   useEffect(() => {
-    if (!allDone || currentIdx >= exercises.length - 1) return;
+    if (!allDone || isLastEx || hasAutoAdvanced.current) return;
+    hasAutoAdvanced.current = true;
     const t = setTimeout(() => onNavigate(currentIdx + 1), 800);
     return () => clearTimeout(t);
   }, [allDone, currentIdx]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -134,11 +139,8 @@ function ActiveExerciseView({
     setBusy(true);
     onLogsUpdate(logs.filter(l => !(l.exercise_name === ex.name && l.set_number === sn)));
     try {
-      await fetch("/api/logs", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, exercise_name: ex.name, set_number: sn }),
-      });
+      const p = new URLSearchParams({ session_id: String(sessionId), exercise_name: ex.name, set_number: String(sn) });
+      await fetch(`/api/logs?${p}`, { method: "DELETE" });
     } catch { onLogsUpdate(snapshot); }
     setBusy(false);
   }
@@ -151,10 +153,20 @@ function ActiveExerciseView({
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: BG, position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: `radial-gradient(ellipse 80% 40% at 50% 0%, ${dayColor}0e 0%, transparent 60%)` }} />
 
+      {/* Cancel confirmation */}
+      {showCancelConfirm && (
+        <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "rgba(9,9,11,0.96)", display: "flex", flexDirection: "column", justifyContent: "flex-end", padding: "0 20px", paddingBottom: "max(28px, calc(env(safe-area-inset-bottom) + 16px))" as unknown as string }}>
+          <p className="font-racing" style={{ fontSize: 26, color: "#fff", textAlign: "center", marginBottom: 6 }}>Abandonner la séance ?</p>
+          <p style={{ fontSize: 13, color: MUTED, textAlign: "center", marginBottom: 24, lineHeight: 1.5 }}>Toutes les séries seront perdues.</p>
+          <button onClick={onCancel} style={{ width: "100%", padding: "17px 0", borderRadius: 16, border: "none", background: "#EF4444", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", marginBottom: 10 }}>Abandonner</button>
+          <button onClick={() => setShowCancelConfirm(false)} style={{ width: "100%", padding: "17px 0", borderRadius: 16, border: `1px solid ${BORDER}`, background: "transparent", color: "#9ca3af", fontSize: 15, fontWeight: 700, cursor: "pointer" }}>Continuer la séance</button>
+        </div>
+      )}
+
       {/* Navbar */}
-      <div style={{ paddingTop: "max(48px, calc(env(safe-area-inset-top) + 16px))", paddingLeft: 20, paddingRight: 20, paddingBottom: 12, flexShrink: 0, position: "relative", zIndex: 1 }}>
+      <div style={{ paddingTop: "max(20px, calc(env(safe-area-inset-top) + 16px))", paddingLeft: 20, paddingRight: 20, paddingBottom: 12, flexShrink: 0, position: "relative", zIndex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 13, letterSpacing: "0.06em", textTransform: "uppercase" as const, fontWeight: 600, display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+          <button onClick={() => setShowCancelConfirm(true)} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 13, letterSpacing: "0.06em", textTransform: "uppercase" as const, fontWeight: 600, display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
             <svg width="7" height="12" viewBox="0 0 7 12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 1 1 6 6 11" />
             </svg>
@@ -203,12 +215,18 @@ function ActiveExerciseView({
         </div>
 
         {/* Exercise name */}
-        <p className="font-racing" style={{ fontSize: 40, color: "#fff", textAlign: "center", lineHeight: 1.05, letterSpacing: "-0.01em", marginBottom: 20 }}>
+        <p className="font-racing" style={{ fontSize: 34, color: "#fff", textAlign: "center", lineHeight: 1.05, letterSpacing: "-0.01em", marginBottom: 10 }}>
           {ex.name}
         </p>
 
+        {/* Reps — info principale */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 14 }}>
+          <span className="font-racing" style={{ fontSize: 80, color: "#F97316", lineHeight: 1, letterSpacing: "-0.02em" }}>{ex.reps}</span>
+          <span style={{ fontSize: 11, color: MUTED, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.14em", marginTop: 2 }}>répétitions</span>
+        </div>
+
         {/* Weight selector */}
-        <div style={{ display: "flex", alignItems: "center", background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 16, overflow: "hidden", width: "100%", marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 16, overflow: "hidden", width: "100%", marginBottom: 14 }}>
           <button onClick={() => adjustWeight(-0.5)} style={{ width: 60, height: 52, background: "none", border: "none", color: "#a1a1aa", fontSize: 28, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
           <div style={{ flex: 1, textAlign: "center" }}>
             <span className="font-racing" style={{ fontSize: 28, fontStyle: "italic", color: weightKg > 0 ? "#fff" : MUTED }}>
@@ -249,19 +267,18 @@ function ActiveExerciseView({
         </p>
 
         {resting && <RestTimer duration={60} onDone={() => setResting(false)} />}
-
-        {ex.tip && (
-          <p style={{ fontSize: 11, color: MUTED, fontStyle: "italic", marginTop: 10, textAlign: "center", lineHeight: 1.5 }}>{ex.tip}</p>
-        )}
       </div>
 
       {/* Action buttons */}
       <div style={{ padding: "0 20px 16px", flexShrink: 0, position: "relative", zIndex: 1, display: "flex", flexDirection: "column", gap: 10 }}>
         <button
-          onClick={() => nextSet ? markSet(nextSet) : undefined}
+          onClick={() => {
+            if (allDone) { if (isLastEx) onRequestFinish(); else onNavigate(currentIdx + 1); }
+            else if (nextSet) markSet(nextSet);
+          }}
           disabled={busy}
-          style={{ width: "100%", padding: 22, borderRadius: 18, border: "none", background: allDone ? `${dayColor}66` : "#F97316", color: "#fff", fontSize: 16, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" as const, boxShadow: allDone ? "none" : "0 0 36px #F9731644", cursor: allDone ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
-          {busy ? "…" : allDone ? "Terminé ✓" : "Série faite ✓"}
+          style={{ width: "100%", padding: 22, borderRadius: 18, border: "none", background: allDone ? (isLastEx ? "#fff" : dayColor) : "#F97316", color: allDone && isLastEx ? BG : "#fff", fontSize: 16, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase" as const, boxShadow: allDone ? (isLastEx ? "0 0 36px #ffffff44" : `0 0 36px ${dayColor}44`) : "0 0 36px #F9731644", cursor: "pointer", opacity: busy ? 0.6 : 1 }}>
+          {busy ? "…" : allDone ? (isLastEx ? "Terminer ✓" : "Exercice suivant →") : "Série faite ✓"}
         </button>
         <button
           onClick={() => nextSet ? markSet(nextSet, true) : undefined}
@@ -685,12 +702,11 @@ export default function HomePage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleStartWorkout(duration: number, mods: Record<string, Override>, added: AddedExercise[]) {
+    void duration;
+    const mergedOverrides = { ...overrides };
     if (Object.keys(mods).length > 0) {
-      setOverrides(prev => {
-        const merged = { ...prev };
-        for (const [name, mod] of Object.entries(mods)) merged[name] = { ...prev[name], ...mod };
-        return merged;
-      });
+      for (const [name, mod] of Object.entries(mods)) mergedOverrides[name] = { ...overrides[name], ...mod };
+      setOverrides(mergedOverrides);
     }
     const sessionExercises = added.map(a => ({ name: a.name, sets: a.sets, reps: a.reps, weight: a.weight || "Poids du corps", muscle: a.muscle, tip: "" }));
     setAddedExercises(sessionExercises);
@@ -707,18 +723,22 @@ export default function HomePage() {
         localStorage.setItem("kaivert_additions", JSON.stringify(stored));
       } catch {}
     }
+    // Compute final exercise list immediately — don't wait for React state to flush
+    const finalExercises: Exercise[] = [
+      ...baseExercises.map(ex => ({ ...ex, sets: mergedOverrides[ex.name]?.sets ?? ex.sets, weight: mergedOverrides[ex.name]?.weight ?? ex.weight })),
+      ...permanentAdditions.map(ex => ({ ...ex, sets: mergedOverrides[ex.name]?.sets ?? ex.sets, weight: mergedOverrides[ex.name]?.weight ?? ex.weight })),
+      ...sessionExercises,
+    ];
     setShowWorkoutConfig(false);
-    void startWorkout();
-    void duration;
+    void startWorkout(finalExercises);
   }
 
-  async function startWorkout() {
+  async function startWorkout(finalExercises: Exercise[]) {
     setStarting(true);
     setFocusedExIdx(0);
     setPage(0);
-    // Initialize weights from exercises
     const initW: Record<string, number> = {};
-    exercises.forEach(ex => { initW[ex.name] = parseWeight(ex.weight); });
+    finalExercises.forEach(ex => { initW[ex.name] = parseWeight(ex.weight); });
     setWeights(initW);
     try {
       const today = localDate();
@@ -736,11 +756,21 @@ export default function HomePage() {
 
   async function finishWorkout() {
     if (!active) return;
-    await fetch(`/api/sessions/${active.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: true, duration_seconds: elapsed }) });
+    try {
+      const res = await fetch(`/api/sessions/${active.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ completed: true, duration_seconds: elapsed > 0 ? elapsed : null }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      console.error("Erreur sauvegarde séance:", e);
+      return;
+    }
     const difficultExercises = [...new Set(logs.filter(l => l.flag === "difficult").map(l => l.exercise_name))];
     setSummary({ duration: elapsed, setsCompleted: doneSets, totalSets, dayType, sessionId: active.id, muscles: [...new Set(exercises.map(ex => ex.muscle))], difficultExercises });
     setActive(null); setLogs([]); setPrevLogs([]); setConfirmFinish(false); setAddedExercises([]); setWeights({});
-    fetchSessions();
+    fetchSessions().catch(() => {});
   }
 
   async function cancelWorkout() {

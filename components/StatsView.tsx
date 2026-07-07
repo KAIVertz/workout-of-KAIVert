@@ -162,12 +162,12 @@ export function StatsView({ sessions }: { sessions: Session[] }) {
     d.setHours(0, 0, 0, 0);
     const end = new Date(d);
     end.setDate(d.getDate() + 7);
-    const label = i === 7 ? "Auj." : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+    const label = d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
     const count = completed.filter(s => {
       const sd = new Date(s.date + "T12:00:00");
       return sd >= d && sd < end;
     }).length;
-    return { label, count, isCurrent: i === 7 };
+    return { label: i === 6 ? "Auj." : label, count, isCurrent: i === 6 };
   });
 
   const maxCount = Math.max(...weeks.map(w => w.count), 1);
@@ -189,8 +189,8 @@ export function StatsView({ sessions }: { sessions: Session[] }) {
 
   const totalSessions = completed.length;
   const totalMin = Math.round(completed.reduce((a, s) => a + (s.duration_seconds ?? 0), 0) / 60);
-  const thisWeekCount = weeks[7].count;
-  const lastWeekCount = weeks[6].count;
+  const thisWeekCount = weeks[6].count;
+  const lastWeekCount = weeks[5].count;
   const vsLastWeek = thisWeekCount - lastWeekCount;
 
   const progressExercises = Object.keys(progress);
@@ -200,7 +200,7 @@ export function StatsView({ sessions }: { sessions: Session[] }) {
     <div style={{ height: "100%", overflowY: "auto", WebkitOverflowScrolling: "touch" } as React.CSSProperties}>
       <div style={{ position: "relative" }}>
         <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, background: `radial-gradient(ellipse 80% 40% at 50% 0%, ${ACCENT}12 0%, transparent 65%)` }} />
-        <div style={{ maxWidth: 480, margin: "0 auto", position: "relative", zIndex: 1, padding: "20px 20px max(32px, calc(env(safe-area-inset-bottom) + 20px))" }}>
+        <div style={{ maxWidth: 480, margin: "0 auto", position: "relative", zIndex: 1, padding: "max(20px, calc(env(safe-area-inset-top) + 12px)) 20px 32px" }}>
 
           {/* Header */}
           <div style={{ marginBottom: 24 }}>

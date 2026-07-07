@@ -12,13 +12,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const body = await req.json() as { completed?: boolean; duration_seconds?: number; notes?: string };
   const sql = getDb();
-  if (body.notes !== undefined) {
-    await sql`UPDATE workout_sessions SET notes=${body.notes} WHERE id=${id}`;
+  try {
+    const dur = body.duration_seconds && body.duration_seconds > 0 ? body.duration_seconds : null;
+    await sql`
+      UPDATE workout_sessions SET
+        completed       = COALESCE(${body.completed ?? null}, completed),
+        duration_seconds = COALESCE(${dur}, duration_seconds),
+        notes           = COALESCE(${body.notes ?? null}, notes)
+      WHERE id = ${id}`;
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
   }
-  if (body.completed !== undefined) {
-    await sql`UPDATE workout_sessions SET completed=${body.completed}, duration_seconds=COALESCE(${body.duration_seconds ?? null},duration_seconds) WHERE id=${id}`;
-  }
-  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
