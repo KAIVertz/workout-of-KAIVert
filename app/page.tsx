@@ -787,7 +787,7 @@ export default function HomePage() {
     <div style={{ height: "100svh", display: "flex", flexDirection: "column", background: BG }}>
       {showCheckin && <CheckinModal onClose={() => { setShowCheckin(false); fetch(`/api/checkins?date=${localDate()}`).then(r => r.json()).then(ci => { if (ci?.energy) setFormScore(Math.round(((Number(ci.energy) + Number(ci.sleep_quality) + Number(ci.mood)) / 3) * 20)); }).catch(() => {}); }} />}
       {showRecovery && <RecoveryModal sessions={sessions} onClose={() => setShowRecovery(false)} />}
-      {summary && <SessionSummary data={summary} sessions={sessions} onClose={() => { setSummary(null); fetchSessions().catch(() => {}); }} />}
+      {summary && <SessionSummary data={summary} sessions={sessions} onClose={() => { const sid = summary.sessionId; setSummary(null); fetchSessions().then(() => setSessions(prev => prev.map(s => s.id === sid ? { ...s, completed: true } : s))).catch(() => {}); }} />}
       {confirmFinish && active && pct < 100 && (
         <IncompleteConfirmModal active={active} exercises={exercises} logs={logs} elapsed={elapsed} color={color} doneSets={doneSets} totalSets={totalSets} pct={pct} onFinish={finishWorkout} onCancel={() => setConfirmFinish(false)} />
       )}
